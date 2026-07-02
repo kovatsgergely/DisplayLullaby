@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 
 namespace DisplayLullaby;
 
@@ -220,24 +222,14 @@ internal sealed class AvaloniaSettingsWindow : Window
             Margin = new Thickness(0)
         };
 
-        var icon = new Border
+        var icon = new Image
         {
             Width = 44,
             Height = 44,
-            CornerRadius = new CornerRadius(9),
-            Background = Brush(37, 99, 235),
-            BorderBrush = Brush(30, 64, 175),
-            BorderThickness = new Thickness(1),
-            Child = new TextBlock
-            {
-                Text = "Display",
-                FontSize = 8,
-                FontWeight = FontWeight.SemiBold,
-                Foreground = Brushes.White,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextAlignment = TextAlignment.Center
-            }
+            Source = LoadBitmapAsset("avares://DisplayLullaby/Assets/settings.png"),
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
         };
 
         var text = new StackPanel
@@ -270,6 +262,12 @@ internal sealed class AvaloniaSettingsWindow : Window
             Padding = new Thickness(16, 12, 16, 12),
             Child = grid
         };
+    }
+
+    private static Bitmap LoadBitmapAsset(string assetUri)
+    {
+        using var stream = AssetLoader.Open(new Uri(assetUri));
+        return new Bitmap(stream);
     }
 
     private Control BuildHotkeyCard()
