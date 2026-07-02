@@ -18,6 +18,8 @@ internal sealed class SettingsWindow
     private const int IdChooseSecondaryTarget = 1302;
     private const int IdChoosePowerMode = 1303;
     private const int SelectorMenuBase = 40000;
+    private const int ClientWidth = 590;
+    private const int ClientHeight = 560;
 
     private static readonly NativeMethods.WndProc WindowProc = WndProc;
     private static SettingsWindow? _current;
@@ -98,7 +100,7 @@ internal sealed class SettingsWindow
         _hwnd = NativeMethods.CreateWindowEx(
             0,
             ClassName,
-            "DisplayLullaby Settings",
+            string.Empty,
             NativeMethods.WsOverlappedWindow,
             x,
             y,
@@ -115,7 +117,7 @@ internal sealed class SettingsWindow
             throw new InvalidOperationException($"Could not create settings window: {NativeMethods.LastErrorMessage()}");
         }
 
-        NativeMethods.SetWindowText(_hwnd, "DisplayLullaby settings");
+        NativeMethods.SetWindowText(_hwnd, string.Empty);
         CreateControls();
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SwShow);
         NativeMethods.SetForegroundWindow(_hwnd);
@@ -219,8 +221,7 @@ internal sealed class SettingsWindow
 
     private (int X, int Y, int Width, int Height) CalculateWindowBounds()
     {
-        var width = Scale(590);
-        var height = Scale(580);
+        var (width, height) = CalculateOuterWindowSize(ClientWidth, ClientHeight);
         var point = new NativeMethods.Point();
         NativeMethods.GetCursorPos(out point);
 
@@ -238,6 +239,24 @@ internal sealed class SettingsWindow
         }
 
         return (100, 100, width, height);
+    }
+
+    private (int Width, int Height) CalculateOuterWindowSize(int clientWidth, int clientHeight)
+    {
+        var rect = new NativeMethods.Rect
+        {
+            Left = 0,
+            Top = 0,
+            Right = Scale(clientWidth),
+            Bottom = Scale(clientHeight)
+        };
+
+        if (NativeMethods.AdjustWindowRectEx(ref rect, NativeMethods.WsOverlappedWindow, false, 0))
+        {
+            return (rect.Width, rect.Height);
+        }
+
+        return (Scale(clientWidth), Scale(clientHeight) + Scale(42));
     }
 
     private void CreateControls()
