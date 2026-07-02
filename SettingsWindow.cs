@@ -121,7 +121,8 @@ internal sealed class AvaloniaSettingsWindow : Window
 
         _statusText = new TextBlock
         {
-            Text = "Ready.",
+            Text = string.Empty,
+            IsVisible = false,
             FontSize = 12,
             Foreground = Brush(64, 92, 133),
             VerticalAlignment = VerticalAlignment.Center
@@ -856,7 +857,11 @@ internal sealed class AvaloniaSettingsWindow : Window
             or Key.LeftAlt or Key.RightAlt
             or Key.LWin or Key.RWin;
 
-    private void SetStatus(string text) => _statusText.Text = text;
+    private void SetStatus(string text)
+    {
+        _statusText.Text = text;
+        _statusText.IsVisible = text.Length > 0;
+    }
 
     private static SolidColorBrush Brush(byte r, byte g, byte b) => new(Color.FromRgb(r, g, b));
 
