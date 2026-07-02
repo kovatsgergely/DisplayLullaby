@@ -55,6 +55,7 @@ internal static unsafe partial class NativeMethods
     public const uint NotifyIconVersion4 = 4;
 
     public const uint MfString = 0x00000000;
+    public const uint MfChecked = 0x00000008;
     public const uint MfSeparator = 0x00000800;
     public const uint TpmRightButton = 0x0002;
     public const uint TpmReturNCmd = 0x0100;

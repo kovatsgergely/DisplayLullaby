@@ -14,6 +14,10 @@ internal sealed class SettingsWindow
     private const int IdTurnAllOff = 1103;
     private const int IdSave = 1201;
     private const int IdCancel = 1202;
+    private const int IdChoosePrimaryTarget = 1301;
+    private const int IdChooseSecondaryTarget = 1302;
+    private const int IdChoosePowerMode = 1303;
+    private const int SelectorMenuBase = 40000;
 
     private static readonly NativeMethods.WndProc WindowProc = WndProc;
     private static SettingsWindow? _current;
@@ -36,9 +40,9 @@ internal sealed class SettingsWindow
     private IntPtr _globalHotkeyButton;
     private IntPtr _primaryHotkeyButton;
     private IntPtr _secondaryHotkeyButton;
-    private IntPtr _primaryTargetCombo;
-    private IntPtr _secondaryTargetCombo;
-    private IntPtr _powerModeCombo;
+    private IntPtr _primaryTargetButton;
+    private IntPtr _secondaryTargetButton;
+    private IntPtr _powerModeButton;
     private IntPtr _idleMinutesEdit;
     private IntPtr _wakeDelayEdit;
     private IntPtr _statusLabel;
@@ -214,8 +218,8 @@ internal sealed class SettingsWindow
 
     private (int X, int Y, int Width, int Height) CalculateWindowBounds()
     {
-        var width = Scale(680);
-        var height = Scale(585);
+        var width = Scale(640);
+        var height = Scale(600);
         var point = new NativeMethods.Point();
         NativeMethods.GetCursorPos(out point);
 
@@ -237,41 +241,41 @@ internal sealed class SettingsWindow
 
     private void CreateControls()
     {
-        CreateLabel("Command", 46, 122, 160, 20, _smallFont);
-        CreateLabel("Hotkey", 268, 122, 90, 20, _smallFont);
-        CreateLabel("Target", 402, 122, 120, 20, _smallFont);
+        CreateLabel("Command", 42, 138, 150, 20, _smallFont);
+        CreateLabel("Hotkey", 254, 138, 90, 20, _smallFont);
+        CreateLabel("Target", 372, 138, 110, 20, _smallFont);
 
-        CreateLabel("All monitors off", 46, 150, 180, 26);
-        _globalHotkeyButton = CreateButton(_settings.GlobalOffHotkey, IdCaptureGlobal, 268, 146, 98, 32);
+        CreateLabel("All monitors off", 42, 166, 170, 26);
+        _globalHotkeyButton = CreateButton(_settings.GlobalOffHotkey, IdCaptureGlobal, 254, 160, 94, 34);
 
-        CreateLabel("Primary standby", 46, 192, 180, 26);
-        _primaryHotkeyButton = CreateButton(_settings.PrimaryStandbyHotkey, IdCapturePrimary, 268, 188, 98, 32);
-        _primaryTargetCombo = CreateTargetCombo(_settings.PrimaryStandbyTarget, 402, 188, 224, 160);
+        CreateLabel("Primary standby", 42, 208, 170, 26);
+        _primaryHotkeyButton = CreateButton(_settings.PrimaryStandbyHotkey, IdCapturePrimary, 254, 202, 94, 34);
+        _primaryTargetButton = CreateButton(_settings.PrimaryStandbyTarget, IdChoosePrimaryTarget, 372, 202, 220, 34);
 
-        CreateLabel("Secondary standby", 46, 234, 180, 26);
-        _secondaryHotkeyButton = CreateButton(_settings.SecondaryStandbyHotkey, IdCaptureSecondary, 268, 230, 98, 32);
-        _secondaryTargetCombo = CreateTargetCombo(_settings.SecondaryStandbyTarget, 402, 230, 224, 160);
+        CreateLabel("Secondary standby", 42, 250, 170, 26);
+        _secondaryHotkeyButton = CreateButton(_settings.SecondaryStandbyHotkey, IdCaptureSecondary, 254, 244, 94, 34);
+        _secondaryTargetButton = CreateButton(_settings.SecondaryStandbyTarget, IdChooseSecondaryTarget, 372, 244, 220, 34);
 
-        CreateLabel("DDC mode", 46, 318, 110, 26);
-        _powerModeCombo = CreatePowerModeCombo(_settings.PowerMode, 160, 314, 150, 140);
+        CreateLabel("DDC mode", 42, 344, 92, 26);
+        _powerModeButton = CreateButton(SerializePowerMode(_settings.PowerMode), IdChoosePowerMode, 140, 338, 126, 34);
 
-        CreateLabel("Idle", 336, 318, 54, 26);
-        _idleMinutesEdit = CreateEdit(_settings.TemporaryStandbyIdleMinutes.ToString(), 394, 314, 62, 30, numbersOnly: true);
-        CreateLabel("min", 464, 318, 40, 22, _smallFont);
+        CreateLabel("Idle", 292, 344, 44, 26);
+        _idleMinutesEdit = CreateEdit(_settings.TemporaryStandbyIdleMinutes.ToString(), 336, 339, 54, 32, numbersOnly: true);
+        CreateLabel("min", 398, 345, 36, 22, _smallFont);
 
-        CreateLabel("Wake", 508, 318, 56, 26);
-        _wakeDelayEdit = CreateEdit(_settings.TemporaryStandbyWakeDelaySeconds.ToString(), 566, 314, 52, 30, numbersOnly: true);
-        CreateLabel("sec", 624, 318, 36, 22, _smallFont);
+        CreateLabel("Wake", 446, 344, 50, 26);
+        _wakeDelayEdit = CreateEdit(_settings.TemporaryStandbyWakeDelaySeconds.ToString(), 496, 339, 48, 32, numbersOnly: true);
+        CreateLabel("sec", 552, 345, 32, 22, _smallFont);
 
-        CreateLabel(BuildDisplaySummary(), 46, 398, 590, 42, _smallFont);
+        CreateLabel(BuildDisplaySummary(), 42, 444, 550, 38, _smallFont);
 
-        _statusLabel = CreateLabel("Ready.", 24, 470, 360, 24, _smallFont);
+        _statusLabel = CreateLabel("Ready.", 22, 492, 340, 22, _smallFont);
 
-        CreateButton("Test primary", IdTestPrimary, 24, 506, 112, 34);
-        CreateButton("Test secondary", IdTestSecondary, 146, 506, 122, 34);
-        CreateButton("All off", IdTurnAllOff, 278, 506, 78, 34);
-        CreateButton("Save", IdSave, 496, 506, 72, 34, defaultButton: true);
-        CreateButton("Cancel", IdCancel, 578, 506, 78, 34);
+        CreateButton("Test primary", IdTestPrimary, 22, 526, 104, 34);
+        CreateButton("Test secondary", IdTestSecondary, 136, 526, 116, 34);
+        CreateButton("All off", IdTurnAllOff, 262, 526, 74, 34);
+        CreateButton("Save", IdSave, 466, 526, 70, 34, defaultButton: true);
+        CreateButton("Cancel", IdCancel, 546, 526, 70, 34);
     }
 
     private void PaintWindow()
@@ -292,20 +296,20 @@ internal sealed class SettingsWindow
         NativeMethods.GetClientRect(_hwnd, out var clientRect);
         FillRect(hdc, clientRect, ColorRef(246, 248, 252));
 
-        var headerRect = ScaleRect(0, 0, 680, 86);
+        var headerRect = ScaleRect(0, 0, 640, 82);
         FillRect(hdc, headerRect, ColorRef(238, 245, 253));
 
-        DrawRoundRect(hdc, 24, 18, 50, 50, 14, ColorRef(37, 99, 235), ColorRef(30, 64, 175));
-        DrawMonitorGlyph(hdc, 39, 33);
+        DrawRoundRect(hdc, 22, 16, 48, 48, 14, ColorRef(37, 99, 235), ColorRef(30, 64, 175));
+        DrawMonitorGlyph(hdc, 36, 31);
 
-        DrawTextLine(hdc, "DisplayLullaby settings", 92, 19, 430, 30, _titleFont, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "Hotkeys, standby handoff, and display targets", 94, 51, 430, 22, _font, ColorRef(71, 94, 131));
+        DrawTextLine(hdc, "DisplayLullaby settings", 86, 17, 390, 30, _titleFont, ColorRef(15, 23, 42));
+        DrawTextLine(hdc, "Hotkeys, standby handoff, and display targets", 88, 49, 390, 22, _font, ColorRef(71, 94, 131));
 
-        DrawCard(hdc, 22, 100, 636, 178, "Hotkeys");
-        DrawCard(hdc, 22, 294, 636, 72, "Standby behavior");
-        DrawCard(hdc, 22, 382, 636, 76, "Detected displays");
+        DrawCard(hdc, 18, 96, 604, 190, "Hotkeys");
+        DrawCard(hdc, 18, 306, 604, 82, "Standby behavior");
+        DrawCard(hdc, 18, 406, 604, 80, "Detected displays");
 
-        var footerLine = ScaleRect(22, 492, 636, 1);
+        var footerLine = ScaleRect(18, 518, 604, 1);
         FillRect(hdc, footerLine, ColorRef(225, 232, 242));
     }
 
@@ -383,15 +387,18 @@ internal sealed class SettingsWindow
         var isPressed = (item.itemState & NativeMethods.OdsSelected) != 0;
         var isPrimary = id == IdSave;
         var isHotkey = id is IdCaptureGlobal or IdCapturePrimary or IdCaptureSecondary;
+        var isSelector = id is IdChoosePrimaryTarget or IdChooseSecondaryTarget or IdChoosePowerMode;
         var isDanger = id == IdTurnAllOff;
 
         var fill = isPrimary ? ColorRef(37, 99, 235)
             : isDanger ? ColorRef(255, 251, 235)
             : isHotkey ? ColorRef(239, 246, 255)
+            : isSelector ? ColorRef(255, 255, 255)
             : ColorRef(255, 255, 255);
         var border = isPrimary ? ColorRef(29, 78, 216)
             : isDanger ? ColorRef(245, 158, 11)
             : isHotkey ? ColorRef(147, 197, 253)
+            : isSelector ? ColorRef(148, 163, 184)
             : ColorRef(203, 213, 225);
         var textColor = isPrimary ? ColorRef(255, 255, 255)
             : isDanger ? ColorRef(120, 53, 15)
@@ -403,6 +410,7 @@ internal sealed class SettingsWindow
             fill = isPrimary ? ColorRef(29, 78, 216)
                 : isDanger ? ColorRef(254, 243, 199)
                 : isHotkey ? ColorRef(219, 234, 254)
+                : isSelector ? ColorRef(248, 250, 252)
                 : ColorRef(241, 245, 249);
         }
 
@@ -414,7 +422,23 @@ internal sealed class SettingsWindow
             textRect.Top += Scale(1);
         }
 
-        DrawCenteredText(item.hDC, text, textRect, _font, textColor);
+        if (isSelector)
+        {
+            DrawTextLineRaw(item.hDC, text, textRect, _font, textColor);
+            DrawSelectorChevron(item.hDC, item.rcItem);
+        }
+        else
+        {
+            DrawCenteredText(item.hDC, text, textRect, _font, textColor);
+        }
+    }
+
+    private void DrawSelectorChevron(IntPtr hdc, NativeMethods.Rect rect)
+    {
+        var arrowRect = rect;
+        arrowRect.Left = rect.Right - Scale(28);
+        arrowRect.Right = rect.Right - Scale(8);
+        DrawCenteredText(hdc, "v", arrowRect, _smallFont, ColorRef(71, 85, 105));
     }
 
     private void DrawRoundRectRaw(IntPtr hdc, NativeMethods.Rect rect, int radius, uint fillColor, uint borderColor)
@@ -443,6 +467,26 @@ internal sealed class SettingsWindow
             text.Length,
             ref rect,
             NativeMethods.DtCenter | NativeMethods.DtVCenter | NativeMethods.DtSingleLine | NativeMethods.DtNoPrefix | NativeMethods.DtEndEllipsis);
+
+        if (oldFont != IntPtr.Zero)
+        {
+            NativeMethods.SelectObject(hdc, oldFont);
+        }
+    }
+
+    private void DrawTextLineRaw(IntPtr hdc, string text, NativeMethods.Rect rect, IntPtr font, uint color)
+    {
+        rect.Left += Scale(12);
+        rect.Right -= Scale(28);
+        var oldFont = font == IntPtr.Zero ? IntPtr.Zero : NativeMethods.SelectObject(hdc, font);
+        NativeMethods.SetBkMode(hdc, NativeMethods.Transparent);
+        NativeMethods.SetTextColor(hdc, color);
+        NativeMethods.DrawText(
+            hdc,
+            text,
+            text.Length,
+            ref rect,
+            NativeMethods.DtLeft | NativeMethods.DtVCenter | NativeMethods.DtSingleLine | NativeMethods.DtNoPrefix | NativeMethods.DtEndEllipsis);
 
         if (oldFont != IntPtr.Zero)
         {
@@ -718,9 +762,9 @@ internal sealed class SettingsWindow
 
         settings = _settings with
         {
-            PrimaryStandbyTarget = ReadText(_primaryTargetCombo).Trim(),
-            SecondaryStandbyTarget = ReadText(_secondaryTargetCombo).Trim(),
-            PowerMode = ParsePowerMode(ReadText(_powerModeCombo)),
+            PrimaryStandbyTarget = ReadText(_primaryTargetButton).Trim(),
+            SecondaryStandbyTarget = ReadText(_secondaryTargetButton).Trim(),
+            PowerMode = ParsePowerMode(ReadText(_powerModeButton)),
             TemporaryStandbyIdleMinutes = idleMinutes,
             TemporaryStandbyWakeDelaySeconds = wakeDelaySeconds
         };
@@ -731,7 +775,7 @@ internal sealed class SettingsWindow
     private void TestTemporaryStandby(bool primary)
     {
         EndCapture(resumeHotkeys: true);
-        var target = ReadText(primary ? _primaryTargetCombo : _secondaryTargetCombo).Trim();
+        var target = ReadText(primary ? _primaryTargetButton : _secondaryTargetButton).Trim();
         if (target.Length == 0)
         {
             target = primary ? "primary" : "secondary";
@@ -748,9 +792,95 @@ internal sealed class SettingsWindow
         SetStatus("Global monitor-off command sent.");
     }
 
-    private string[] BuildTargetOptions()
+    private void ShowTargetMenu(bool primary)
+    {
+        EndCapture(resumeHotkeys: true);
+        var button = primary ? _primaryTargetButton : _secondaryTargetButton;
+        var current = ReadText(button).Trim();
+        var selected = ShowSelectorMenu(button, BuildTargetOptions(current), current, SelectorMenuBase);
+        if (selected.Length == 0)
+        {
+            return;
+        }
+
+        NativeMethods.SetWindowText(button, selected);
+        _settings = primary
+            ? _settings with { PrimaryStandbyTarget = selected }
+            : _settings with { SecondaryStandbyTarget = selected };
+        SetStatus(primary ? "Primary target updated." : "Secondary target updated.");
+    }
+
+    private void ShowPowerModeMenu()
+    {
+        EndCapture(resumeHotkeys: true);
+        var current = ReadText(_powerModeButton).Trim();
+        var selected = ShowSelectorMenu(
+            _powerModeButton,
+            ["Standby", "Suspend", "PowerOff", "SoftOff"],
+            current,
+            SelectorMenuBase + 100);
+        if (selected.Length == 0)
+        {
+            return;
+        }
+
+        NativeMethods.SetWindowText(_powerModeButton, selected);
+        _settings = _settings with { PowerMode = ParsePowerMode(selected) };
+        SetStatus("DDC mode updated.");
+    }
+
+    private string ShowSelectorMenu(IntPtr button, string[] options, string current, int idBase)
+    {
+        if (options.Length == 0 || !NativeMethods.GetWindowRect(button, out var rect))
+        {
+            return string.Empty;
+        }
+
+        var menu = NativeMethods.CreatePopupMenu();
+        if (menu == IntPtr.Zero)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            for (var i = 0; i < options.Length; i++)
+            {
+                var flags = NativeMethods.MfString;
+                if (options[i].Equals(current, StringComparison.OrdinalIgnoreCase))
+                {
+                    flags |= NativeMethods.MfChecked;
+                }
+
+                NativeMethods.AppendMenu(menu, flags, (nuint)(idBase + i), options[i]);
+            }
+
+            NativeMethods.SetForegroundWindow(_hwnd);
+            var command = NativeMethods.TrackPopupMenu(
+                menu,
+                NativeMethods.TpmReturNCmd | NativeMethods.TpmRightButton,
+                rect.Left,
+                rect.Bottom,
+                0,
+                _hwnd,
+                IntPtr.Zero);
+            var index = (int)command - idBase;
+            return index >= 0 && index < options.Length ? options[index] : string.Empty;
+        }
+        finally
+        {
+            NativeMethods.DestroyMenu(menu);
+        }
+    }
+
+    private string[] BuildTargetOptions(string selectedTarget)
     {
         var options = new List<string> { "primary", "secondary" };
+        if (!string.IsNullOrWhiteSpace(selectedTarget) &&
+            !options.Contains(selectedTarget, StringComparer.OrdinalIgnoreCase))
+        {
+            options.Add(selectedTarget);
+        }
 
         try
         {
@@ -772,6 +902,8 @@ internal sealed class SettingsWindow
 
         return options.ToArray();
     }
+
+    private string[] BuildTargetOptions() => BuildTargetOptions(string.Empty);
 
     private string BuildDisplaySummary()
     {
@@ -1023,6 +1155,15 @@ internal sealed class SettingsWindow
                 break;
             case IdTurnAllOff:
                 TurnAllMonitorsOff();
+                break;
+            case IdChoosePrimaryTarget:
+                ShowTargetMenu(primary: true);
+                break;
+            case IdChooseSecondaryTarget:
+                ShowTargetMenu(primary: false);
+                break;
+            case IdChoosePowerMode:
+                ShowPowerModeMenu();
                 break;
             case IdSave:
                 TrySave();
