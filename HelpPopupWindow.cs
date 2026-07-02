@@ -20,6 +20,8 @@ internal sealed class HelpPopupWindow
     private const int DesignDpi = 96;
     private const int MinWidthDips = 330;
     private const int MaxWidthDips = 640;
+    internal const string DescriptionText =
+        "F9 sends every monitor to Windows standby. F10 and F11 use DDC/CI to put one selected external display in temporary standby. Because DDC/CI can become unreliable after long standby periods, DisplayLullaby hands off to Windows standby after inactivity.";
     private AvaloniaHelpPopupWindow? _window;
     private int _isVisible;
 
@@ -37,7 +39,7 @@ internal sealed class HelpPopupWindow
             _window.PrepareToShow();
 
             var widthDips = CalculateWidthDips(content);
-            var heightDips = CalculateHeightDips(content);
+            var heightDips = CalculateHeightDips(content, widthDips);
             var scale = GetCursorScale();
             var widthPixels = Scale(widthDips, scale);
             var heightPixels = Scale(heightDips, scale);
@@ -107,11 +109,19 @@ internal sealed class HelpPopupWindow
         LastHiddenUtc = DateTime.UtcNow;
     }
 
-    private static int CalculateHeightDips(HelpPopupContent content)
+    private static int CalculateHeightDips(HelpPopupContent content, int widthDips)
     {
         var displayRows = Math.Max(1, content.Displays.Count);
         var hotkeyRows = Math.Max(1, content.Hotkeys.Count);
-        return 100 + (hotkeyRows * 40) + (displayRows * 32);
+        return 100 + CalculateDescriptionHeight(widthDips) + (hotkeyRows * 40) + (displayRows * 32);
+    }
+
+    private static int CalculateDescriptionHeight(int widthDips)
+    {
+        var availableWidth = Math.Max(180, widthDips - 82);
+        var descriptionWidth = EstimateTextWidth(DescriptionText, 12, bold: false);
+        var lines = Math.Clamp((int)Math.Ceiling(descriptionWidth / (double)availableWidth), 1, 7);
+        return 8 + (lines * 17);
     }
 
     private static int ActionRowWidth(string key, string description) =>
@@ -308,7 +318,14 @@ internal sealed class AvaloniaHelpPopupWindow : Window
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Star)
             },
-            ColumnSpacing = 12
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto)
+            },
+            ColumnSpacing = 12,
+            RowSpacing = 2
         };
 
         var icon = new Image
@@ -320,29 +337,39 @@ internal sealed class AvaloniaHelpPopupWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         };
 
-        var text = new StackPanel
-        {
-            Spacing = 0,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        text.Children.Add(new TextBlock
+        var title = new TextBlock
         {
             Text = "DisplayLullaby",
             FontSize = 20,
             FontWeight = FontWeight.SemiBold,
-            Foreground = Palette.PrimaryText
-        });
-        text.Children.Add(new TextBlock
+            Foreground = Palette.PrimaryText,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var subtitle = new TextBlock
         {
             Text = "Monitor standby shortcuts",
             FontSize = 13,
             Foreground = Palette.MutedText
-        });
+        };
+        var description = new TextBlock
+        {
+            Text = HelpPopupWindow.DescriptionText,
+            FontSize = 12,
+            Foreground = Palette.MutedText,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 5, 0, 0)
+        };
 
         Grid.SetColumn(icon, 0);
-        Grid.SetColumn(text, 1);
+        Grid.SetColumn(title, 1);
+        Grid.SetColumn(subtitle, 1);
+        Grid.SetRow(subtitle, 1);
+        Grid.SetColumn(description, 1);
+        Grid.SetRow(description, 2);
         grid.Children.Add(icon);
-        grid.Children.Add(text);
+        grid.Children.Add(title);
+        grid.Children.Add(subtitle);
+        grid.Children.Add(description);
         return grid;
     }
 

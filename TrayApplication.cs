@@ -11,7 +11,6 @@ internal sealed unsafe class TrayApplication
     private const int MenuTemporaryStandbyPrimary = 2600;
     private const int MenuTemporaryStandbySecondary = 2601;
     private const int MenuSettings = 2800;
-    private const int MenuHelp = 2801;
     private const int MenuReload = 3000;
     private const int MenuExit = 3001;
     private const uint WmRunQueuedAction = NativeMethods.WmApp + 2;
@@ -427,14 +426,13 @@ internal sealed unsafe class TrayApplication
         try
         {
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSettings, "Settings...");
-            NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuHelp, "Help");
             NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuGlobalOff, "Turn all monitors off");
             NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuTemporaryStandbyPrimary, FormatTemporaryStandbyMenu(primary: true));
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuTemporaryStandbySecondary, FormatTemporaryStandbyMenu(primary: false));
             NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
-            NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuReload, "Reload hotkeys");
+            NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuReload, "Reload config file");
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuExit, "Exit");
 
             if (!NativeMethods.GetCursorPos(out var point))
@@ -482,12 +480,6 @@ internal sealed unsafe class TrayApplication
         if (command == MenuSettings)
         {
             ShowSettings();
-            return;
-        }
-
-        if (command == MenuHelp)
-        {
-            ShowHelp();
             return;
         }
 
@@ -700,7 +692,7 @@ internal sealed unsafe class TrayApplication
                     trayEvent == NativeMethods.NinSelect ||
                     trayEvent == NativeMethods.NinKeySelect)
                 {
-                    ShowSettings();
+                    ShowHelp();
                 }
                 else if (trayEvent == NativeMethods.WmRButtonUp ||
                          trayEvent == NativeMethods.WmContextMenu)
