@@ -348,8 +348,7 @@ internal sealed unsafe class TrayApplication
             using var session = MonitorController.OpenSession();
             foreach (var target in session.Targets)
             {
-                var role = target.IsPrimary ? "primary" : "display";
-                displays.Add(new HelpDisplayRow(TrimDeviceName(target.DeviceName), target.Description, role));
+                displays.Add(new HelpDisplayRow(TrimDeviceName(target.DeviceName), target.Description, string.Empty));
             }
         }
         catch

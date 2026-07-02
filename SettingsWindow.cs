@@ -287,8 +287,8 @@ internal sealed class AvaloniaSettingsWindow : Window
         AddCell(grid, HeaderText("Hotkey"), 0, 1);
         AddCell(grid, HeaderText("Target"), 0, 2);
         AddHotkeyRow(grid, 1, "All monitors off", _globalHotkeyButton, null);
-        AddHotkeyRow(grid, 2, "DISPLAY1 standby", _primaryHotkeyButton, _primaryTargetCombo);
-        AddHotkeyRow(grid, 3, "DISPLAY2 standby", _secondaryHotkeyButton, _secondaryTargetCombo);
+        AddHotkeyRow(grid, 2, "Primary standby", _primaryHotkeyButton, _primaryTargetCombo);
+        AddHotkeyRow(grid, 3, "Secondary standby", _secondaryHotkeyButton, _secondaryTargetCombo);
 
         return Card("Hotkeys", grid);
     }
@@ -366,8 +366,8 @@ internal sealed class AvaloniaSettingsWindow : Window
 
         AddCell(grid, _statusBox, 0, 0, columnSpan: 6);
 
-        var testPrimary = SecondaryButton("Test DISPLAY1", () => TestTemporaryStandby(primary: true), 104);
-        var testSecondary = SecondaryButton("Test DISPLAY2", () => TestTemporaryStandby(primary: false), 104);
+        var testPrimary = SecondaryButton("Test primary", () => TestTemporaryStandby(primary: true), 100);
+        var testSecondary = SecondaryButton("Test secondary", () => TestTemporaryStandby(primary: false), 118);
         var allOff = SecondaryButton("All off", TurnAllMonitorsOff, 64);
         allOff.Foreground = Brush(120, 53, 15);
         allOff.BorderBrush = Brush(245, 158, 11);
@@ -570,8 +570,8 @@ internal sealed class AvaloniaSettingsWindow : Window
         ShowCaptureTooltip(target, target switch
         {
             CaptureTarget.Global => "Press a key for all monitors off.",
-            CaptureTarget.Primary => "Press a key for DISPLAY1 standby.",
-            CaptureTarget.Secondary => "Press a key for DISPLAY2 standby.",
+            CaptureTarget.Primary => "Press a key for primary standby.",
+            CaptureTarget.Secondary => "Press a key for secondary standby.",
             _ => "Press a key."
         });
         Focus();
@@ -778,7 +778,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         }
 
         _executeCommand(TrayAction.TemporaryStandby, target);
-        SetStatus(primary ? "DISPLAY1 standby command sent." : "DISPLAY2 standby command sent.");
+        SetStatus(primary ? "Primary standby command sent." : "Secondary standby command sent.");
     }
 
     private void TurnAllMonitorsOff()
@@ -798,8 +798,7 @@ internal sealed class AvaloniaSettingsWindow : Window
             foreach (var target in session.Targets)
             {
                 var value = MonitorController.TrimDeviceName(target.DeviceName);
-                var role = target.IsPrimary ? " (primary)" : string.Empty;
-                AddOption(options, value, $"{value} - {target.Description}{role}");
+                AddOption(options, value, $"{value} - {target.Description}");
             }
         }
         catch
@@ -836,8 +835,7 @@ internal sealed class AvaloniaSettingsWindow : Window
                 .Select(target =>
                 {
                     var deviceName = MonitorController.TrimDeviceName(target.DeviceName);
-                    var role = target.IsPrimary ? " (primary)" : string.Empty;
-                    return $"{deviceName}{role}  {target.Description}";
+                    return $"{deviceName}  {target.Description}";
                 })
                 .ToArray();
         }
