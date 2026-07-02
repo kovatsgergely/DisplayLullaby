@@ -18,7 +18,7 @@ internal sealed record HelpPopupContent(IReadOnlyList<HelpDisplayRow> Displays, 
 internal sealed class HelpPopupWindow
 {
     private const int DesignDpi = 96;
-    private const int MinWidthDips = 350;
+    private const int MinWidthDips = 330;
     private const int MaxWidthDips = 640;
     private AvaloniaHelpPopupWindow? _window;
     private int _isVisible;
@@ -97,7 +97,7 @@ internal sealed class HelpPopupWindow
             : content.Displays.Max(row => DisplayRowWidth(row.DeviceName, row.Description, row.Role));
 
         var contentWidth = Math.Max(260, Math.Max(hotkeyWidth, displayWidth));
-        return Math.Clamp(contentWidth + 44, MinWidthDips, MaxWidthDips);
+        return Math.Clamp(contentWidth + 32, MinWidthDips, MaxWidthDips);
     }
 
     private void MarkHidden()
@@ -110,7 +110,7 @@ internal sealed class HelpPopupWindow
     {
         var displayRows = Math.Max(1, content.Displays.Count);
         var hotkeyRows = Math.Max(1, content.Hotkeys.Count);
-        return 112 + (hotkeyRows * 40) + (displayRows * 32);
+        return 100 + (hotkeyRows * 40) + (displayRows * 32);
     }
 
     private static int ActionRowWidth(string key, string description) =>
@@ -227,7 +227,8 @@ internal sealed class AvaloniaHelpPopupWindow : Window
         Topmost = true;
         UseLayoutRounding = true;
         FontFamily = new FontFamily("Inter, Segoe UI");
-        Background = Brush(248, 250, 252);
+        TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
+        Background = Brushes.Transparent;
 
         KeyDown += (_, e) =>
         {
@@ -288,7 +289,6 @@ internal sealed class AvaloniaHelpPopupWindow : Window
 
         return new Border
         {
-            Margin = new Thickness(6),
             Padding = new Thickness(16),
             Background = Brushes.White,
             BorderBrush = Brush(203, 213, 225),
