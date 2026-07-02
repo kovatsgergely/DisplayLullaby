@@ -178,6 +178,12 @@ internal sealed class AppConfig
             return false;
         }
 
+        if (settings.PrimaryStandbyTarget.Trim().Equals(settings.SecondaryStandbyTarget.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            warning = "Primary and secondary standby targets must be different.";
+            return false;
+        }
+
         if (settings.TemporaryStandbyIdleMinutes is < 0 or > 1440)
         {
             warning = "Idle handoff minutes must be between 0 and 1440.";

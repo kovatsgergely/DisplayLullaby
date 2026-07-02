@@ -388,6 +388,16 @@ internal static unsafe class MonitorController
             ? deviceName[4..]
             : deviceName;
 
+    public static int GetDisplayNumber(string deviceName)
+    {
+        var trimmed = TrimDeviceName(deviceName);
+        const string prefix = "DISPLAY";
+        return trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+               int.TryParse(trimmed[prefix.Length..], out var number)
+            ? number
+            : int.MaxValue;
+    }
+
     private static bool EnumerateLogicalMonitor(IntPtr hMonitor, IntPtr hdcMonitor, ref NativeMethods.Rect lprcMonitor, IntPtr dwData)
     {
         var handle = GCHandle.FromIntPtr(dwData);

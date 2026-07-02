@@ -93,10 +93,14 @@ internal sealed class AvaloniaSettingsWindow : Window
     private readonly ComboBox _powerModeCombo;
     private readonly TextBox _idleMinutesTextBox;
     private readonly TextBox _wakeDelayTextBox;
+    private readonly TargetOption[] _targetOptions;
+    private readonly bool _secondaryControlsEnabled;
     private AppSettings _settings;
     private CaptureTarget _captureTarget;
     private Button? _captureTooltipButton;
+    private Button? _secondaryTestButton;
     private DateTime _captureStartedUtc;
+    private bool _syncingTargetCombos;
 
     public AvaloniaSettingsWindow(
         AppSettings settings,
@@ -150,6 +154,8 @@ internal sealed class AvaloniaSettingsWindow : Window
         _secondaryHotkeyButton = HotkeyButton(settings.SecondaryStandbyHotkey, () => StartCapture(CaptureTarget.Secondary));
 
         var targetOptions = BuildTargetOptions(settings.PrimaryStandbyTarget, settings.SecondaryStandbyTarget);
+        _targetOptions = targetOptions;
+        _secondaryControlsEnabled = targetOptions.Count(static option => option.IsDetected) != 1;
         _primaryTargetCombo = TargetCombo(targetOptions, settings.PrimaryStandbyTarget);
         _secondaryTargetCombo = TargetCombo(targetOptions, settings.SecondaryStandbyTarget);
         _powerModeCombo = Combo(["Standby", "Suspend", "PowerOff", "SoftOff"], SerializePowerMode(settings.PowerMode));
@@ -158,6 +164,10 @@ internal sealed class AvaloniaSettingsWindow : Window
         _wakeDelayTextBox = NumberBox(settings.TemporaryStandbyWakeDelaySeconds.ToString(), 52);
 
         Content = BuildContent();
+        ApplyTargetAvailability();
+        EnsureDistinctTargets(primaryChanged: true, showStatus: false);
+        _primaryTargetCombo.SelectionChanged += (_, _) => HandleTargetSelectionChanged(primaryChanged: true);
+        _secondaryTargetCombo.SelectionChanged += (_, _) => HandleTargetSelectionChanged(primaryChanged: false);
         KeyDown += HandleKeyDown;
         PointerPressed += HandlePointerPressed;
         Deactivated += HandleDeactivated;
@@ -368,6 +378,7 @@ internal sealed class AvaloniaSettingsWindow : Window
 
         var testPrimary = SecondaryButton("Test primary", () => TestTemporaryStandby(primary: true), 100);
         var testSecondary = SecondaryButton("Test secondary", () => TestTemporaryStandby(primary: false), 118);
+        _secondaryTestButton = testSecondary;
         var allOff = SecondaryButton("All off", TurnAllMonitorsOff, 64);
         allOff.Foreground = Brush(120, 53, 15);
         allOff.BorderBrush = Brush(245, 158, 11);
@@ -711,6 +722,78 @@ internal sealed class AvaloniaSettingsWindow : Window
         SetStatus($"Hotkey set to {chord}.");
     }
 
+    private void ApplyTargetAvailability()
+    {
+        _secondaryHotkeyButton.IsEnabled = _secondaryControlsEnabled;
+        _secondaryTargetCombo.IsEnabled = _secondaryControlsEnabled;
+        if (_secondaryTestButton is not null)
+        {
+            _secondaryTestButton.IsEnabled = _secondaryControlsEnabled;
+        }
+    }
+
+    private void HandleTargetSelectionChanged(bool primaryChanged)
+    {
+        if (_syncingTargetCombos)
+        {
+            return;
+        }
+
+        EnsureDistinctTargets(primaryChanged, showStatus: true);
+    }
+
+    private void EnsureDistinctTargets(bool primaryChanged, bool showStatus)
+    {
+        if (!_secondaryControlsEnabled || _targetOptions.Length < 2)
+        {
+            return;
+        }
+
+        var primaryTarget = SelectedTargetValue(_primaryTargetCombo, _settings.PrimaryStandbyTarget);
+        var secondaryTarget = SelectedTargetValue(_secondaryTargetCombo, _settings.SecondaryStandbyTarget);
+        if (!primaryTarget.Equals(secondaryTarget, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var selectedTarget = primaryChanged ? primaryTarget : secondaryTarget;
+        var replacement = _targetOptions.FirstOrDefault(option =>
+            !option.Value.Equals(selectedTarget, StringComparison.OrdinalIgnoreCase));
+        if (replacement is null)
+        {
+            return;
+        }
+
+        if (primaryChanged)
+        {
+            SetSelectedTarget(_secondaryTargetCombo, replacement.Value);
+        }
+        else
+        {
+            SetSelectedTarget(_primaryTargetCombo, replacement.Value);
+        }
+
+        if (showStatus)
+        {
+            var slotName = primaryChanged ? "Secondary" : "Primary";
+            SetStatus($"{slotName} standby moved to {replacement.Value} to keep targets distinct.");
+        }
+    }
+
+    private void SetSelectedTarget(ComboBox combo, string value)
+    {
+        var option = _targetOptions.FirstOrDefault(candidate =>
+            candidate.Value.Equals(value, StringComparison.OrdinalIgnoreCase));
+        if (option is null)
+        {
+            return;
+        }
+
+        _syncingTargetCombos = true;
+        combo.SelectedItem = option;
+        _syncingTargetCombos = false;
+    }
+
     private void Save()
     {
         EndCapture(resumeHotkeys: true);
@@ -795,10 +878,12 @@ internal sealed class AvaloniaSettingsWindow : Window
         try
         {
             using var session = MonitorController.OpenSession();
-            foreach (var target in session.Targets)
+            foreach (var target in session.Targets
+                         .OrderBy(static target => MonitorController.GetDisplayNumber(target.DeviceName))
+                         .ThenBy(static target => MonitorController.TrimDeviceName(target.DeviceName), StringComparer.OrdinalIgnoreCase))
             {
                 var value = MonitorController.TrimDeviceName(target.DeviceName);
-                AddOption(options, value, $"{value} - {target.Description}");
+                AddOption(options, value, $"{value} - {target.Description}", isDetected: true);
             }
         }
         catch
@@ -808,16 +893,19 @@ internal sealed class AvaloniaSettingsWindow : Window
 
         foreach (var value in currentValues)
         {
-            AddOption(options, value, value);
+            AddOption(options, value, value, isDetected: false);
         }
 
         if (options.Count == 0)
         {
-            AddOption(options, "DISPLAY1", "DISPLAY1");
-            AddOption(options, "DISPLAY2", "DISPLAY2");
+            AddOption(options, "DISPLAY1", "DISPLAY1", isDetected: false);
+            AddOption(options, "DISPLAY2", "DISPLAY2", isDetected: false);
         }
 
-        return options.ToArray();
+        return options
+            .OrderBy(static option => MonitorController.GetDisplayNumber(option.Value))
+            .ThenBy(static option => option.Value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static IEnumerable<string> BuildDisplayRows()
@@ -831,6 +919,8 @@ internal sealed class AvaloniaSettingsWindow : Window
             }
 
             return session.Targets
+                .OrderBy(static target => MonitorController.GetDisplayNumber(target.DeviceName))
+                .ThenBy(static target => MonitorController.TrimDeviceName(target.DeviceName), StringComparer.OrdinalIgnoreCase)
                 .Take(3)
                 .Select(target =>
                 {
@@ -845,12 +935,12 @@ internal sealed class AvaloniaSettingsWindow : Window
         }
     }
 
-    private static void AddOption(List<TargetOption> options, string value, string label)
+    private static void AddOption(List<TargetOption> options, string value, string label, bool isDetected)
     {
         var trimmed = value.Trim();
         if (trimmed.Length > 0 && !options.Any(option => option.Value.Equals(trimmed, StringComparison.OrdinalIgnoreCase)))
         {
-            options.Add(new TargetOption(trimmed, label.Trim()));
+            options.Add(new TargetOption(trimmed, label.Trim(), isDetected));
         }
     }
 
@@ -979,7 +1069,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         Secondary
     }
 
-    private sealed record TargetOption(string Value, string Label)
+    private sealed record TargetOption(string Value, string Label, bool IsDetected)
     {
         public override string ToString() => Label;
     }

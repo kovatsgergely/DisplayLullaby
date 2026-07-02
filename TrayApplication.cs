@@ -346,7 +346,9 @@ internal sealed unsafe class TrayApplication
         try
         {
             using var session = MonitorController.OpenSession();
-            foreach (var target in session.Targets)
+            foreach (var target in session.Targets
+                         .OrderBy(static target => MonitorController.GetDisplayNumber(target.DeviceName))
+                         .ThenBy(static target => TrimDeviceName(target.DeviceName), StringComparer.OrdinalIgnoreCase))
             {
                 displays.Add(new HelpDisplayRow(TrimDeviceName(target.DeviceName), target.Description, string.Empty));
             }
