@@ -18,7 +18,7 @@ internal sealed record HelpPopupContent(IReadOnlyList<HelpDisplayRow> Displays, 
 internal sealed class HelpPopupWindow
 {
     private const int DesignDpi = 96;
-    private const int WidthDips = 500;
+    private const int WidthDips = 560;
     private AvaloniaHelpPopupWindow? _window;
     private int _isVisible;
 
@@ -94,7 +94,7 @@ internal sealed class HelpPopupWindow
     {
         var displayRows = Math.Max(1, content.Displays.Count);
         var hotkeyRows = Math.Max(1, content.Hotkeys.Count);
-        return 128 + (hotkeyRows * 40) + (displayRows * 31);
+        return 168 + (hotkeyRows * 40) + (displayRows * 32);
     }
 
     private static NativeMethods.Point CalculatePosition(int width, int height)
