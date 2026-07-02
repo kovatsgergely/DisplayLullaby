@@ -18,7 +18,8 @@ internal sealed record HelpPopupContent(IReadOnlyList<HelpDisplayRow> Displays, 
 internal sealed class HelpPopupWindow
 {
     private const int DesignDpi = 96;
-    private const int WidthDips = 560;
+    private const int MinWidthDips = 390;
+    private const int MaxWidthDips = 640;
     private AvaloniaHelpPopupWindow? _window;
     private int _isVisible;
 
@@ -34,13 +35,14 @@ internal sealed class HelpPopupWindow
             _window.UpdateContent(content);
             _window.PrepareToShow();
 
+            var widthDips = CalculateWidthDips(content);
             var heightDips = CalculateHeightDips(content);
             var scale = GetCursorScale();
-            var widthPixels = Scale(WidthDips, scale);
+            var widthPixels = Scale(widthDips, scale);
             var heightPixels = Scale(heightDips, scale);
             var position = CalculatePosition(widthPixels, heightPixels);
 
-            _window.Width = WidthDips;
+            _window.Width = widthDips;
             _window.Height = heightDips;
             _window.Position = new PixelPoint(position.X, position.Y);
 
@@ -84,6 +86,20 @@ internal sealed class HelpPopupWindow
         });
     }
 
+    private static int CalculateWidthDips(HelpPopupContent content)
+    {
+        var hotkeyWidth = content.Hotkeys.Count == 0
+            ? ActionRowWidth("-", "No hotkeys configured")
+            : content.Hotkeys.Max(row => ActionRowWidth(row.Key, row.Description));
+
+        var displayWidth = content.Displays.Count == 0
+            ? DisplayRowWidth("-", "No displays are visible right now", string.Empty)
+            : content.Displays.Max(row => DisplayRowWidth(row.DeviceName, row.Description, row.Role));
+
+        var contentWidth = Math.Max(260, Math.Max(hotkeyWidth, displayWidth));
+        return Math.Clamp(contentWidth + 44, MinWidthDips, MaxWidthDips);
+    }
+
     private void MarkHidden()
     {
         Volatile.Write(ref _isVisible, 0);
@@ -94,7 +110,22 @@ internal sealed class HelpPopupWindow
     {
         var displayRows = Math.Max(1, content.Displays.Count);
         var hotkeyRows = Math.Max(1, content.Hotkeys.Count);
-        return 168 + (hotkeyRows * 40) + (displayRows * 32);
+        return 144 + (hotkeyRows * 40) + (displayRows * 32);
+    }
+
+    private static int ActionRowWidth(string key, string description) =>
+        84 + EstimateTextWidth(key, 13, bold: true) + EstimateTextWidth(description, 14, bold: false);
+
+    private static int DisplayRowWidth(string deviceName, string description, string role) =>
+        44 + 76 + 16 + EstimateTextWidth(description, 13, bold: false) + RoleWidth(role);
+
+    private static int RoleWidth(string role) =>
+        string.IsNullOrWhiteSpace(role) ? 0 : 8 + EstimateTextWidth(role, 13, bold: false);
+
+    private static int EstimateTextWidth(string text, int fontSize, bool bold)
+    {
+        var factor = bold ? 0.62 : 0.57;
+        return (int)Math.Ceiling(text.Length * fontSize * factor);
     }
 
     private static NativeMethods.Point CalculatePosition(int width, int height)
@@ -254,13 +285,6 @@ internal sealed class AvaloniaHelpPopupWindow : Window
         stack.Children.Add(BuildHeader());
         stack.Children.Add(BuildHotkeys(content.Hotkeys));
         stack.Children.Add(BuildDisplays(content.Displays));
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Left-click: hide. Right-click: menu. Esc: close.",
-            FontSize = 12,
-            Foreground = Brush(82, 105, 145),
-            TextWrapping = TextWrapping.Wrap
-        });
 
         return new Border
         {
@@ -457,8 +481,7 @@ internal sealed class AvaloniaHelpPopupWindow : Window
             Text = description,
             FontSize = 13,
             Foreground = Brush(30, 41, 59),
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis
+            VerticalAlignment = VerticalAlignment.Center
         };
         var roleText = new TextBlock
         {
