@@ -1,50 +1,21 @@
-using System.Runtime.InteropServices;
-using System.Text;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.Media;
 
 namespace DisplayLullaby;
 
 internal sealed class SettingsWindow
 {
-    private const string ClassName = "DisplayLullabySettingsWindow";
-    private const int IdCaptureGlobal = 1001;
-    private const int IdCapturePrimary = 1002;
-    private const int IdCaptureSecondary = 1003;
-    private const int IdTestPrimary = 1101;
-    private const int IdTestSecondary = 1102;
-    private const int IdTurnAllOff = 1103;
-    private const int IdSave = 1201;
-    private const int IdCancel = 1202;
-    private const int IdChoosePrimaryTarget = 1301;
-    private const int IdChooseSecondaryTarget = 1302;
-    private const int IdChoosePowerMode = 1303;
-    private const int SelectorMenuBase = 40000;
-    private const int ClientWidth = 420;
-    private const int ClientHeight = 374;
-
-    private static readonly NativeMethods.WndProc WindowProc = WndProc;
-    private static SettingsWindow? _current;
-    private static bool _classRegistered;
-
-    private readonly IntPtr _owner;
+    private readonly AppSettings _settings;
     private readonly Action _onSaved;
     private readonly Action<TrayAction, string> _executeCommand;
     private readonly Action _onCaptureStarted;
     private readonly Action _onCaptureEnded;
     private readonly Action _onClosed;
-    private readonly uint _dpi;
-
-    private AppSettings _settings;
-    private IntPtr _hwnd;
-    private IntPtr _font;
-    private IntPtr _titleFont;
-    private IntPtr _sectionFont;
-    private IntPtr _smallFont;
-    private IntPtr _idleMinutesEdit;
-    private IntPtr _wakeDelayEdit;
-    private readonly Dictionary<int, NativeMethods.Rect> _clickRegions = new();
-    private string _statusText = "Ready.";
-    private int _pressedCommandId;
-    private CaptureTarget _captureTarget;
+    private AvaloniaSettingsWindow? _window;
+    private int _isOpen;
 
     public SettingsWindow(
         IntPtr owner,
@@ -55,725 +26,499 @@ internal sealed class SettingsWindow
         Action onCaptureEnded,
         Action onClosed)
     {
-        _owner = owner;
         _settings = settings;
         _onSaved = onSaved;
         _executeCommand = executeCommand;
         _onCaptureStarted = onCaptureStarted;
         _onCaptureEnded = onCaptureEnded;
         _onClosed = onClosed;
-        _dpi = NativeMethods.GetDpiForSystem();
-        if (_dpi == 0)
-        {
-            _dpi = 96;
-        }
     }
 
-    public bool IsOpen => _hwnd != IntPtr.Zero && NativeMethods.IsWindow(_hwnd);
-
-    public void Close()
-    {
-        if (IsOpen)
-        {
-            NativeMethods.DestroyWindow(_hwnd);
-        }
-    }
+    public bool IsOpen => Volatile.Read(ref _isOpen) != 0;
 
     public void Show()
     {
-        if (IsOpen)
+        AvaloniaUiHost.Invoke(() =>
         {
-            NativeMethods.ShowWindow(_hwnd, NativeMethods.SwRestore);
-            NativeMethods.SetForegroundWindow(_hwnd);
-            return;
-        }
+            if (_window is { } existing)
+            {
+                if (!existing.IsVisible)
+                {
+                    existing.Show();
+                }
 
-        RegisterWindowClass();
-        _current = this;
-        CreateFonts();
+                existing.Activate();
+                return;
+            }
 
-        var (x, y, width, height) = CalculateWindowBounds();
-        _hwnd = NativeMethods.CreateWindowEx(
-            0,
-            ClassName,
-            "DisplayLullaby settings",
-            NativeMethods.WsOverlappedWindow,
-            x,
-            y,
-            width,
-            height,
-            _owner,
-            IntPtr.Zero,
-            NativeMethods.GetModuleHandle(null),
-            IntPtr.Zero);
+            _window = new AvaloniaSettingsWindow(
+                _settings,
+                _onSaved,
+                _executeCommand,
+                _onCaptureStarted,
+                _onCaptureEnded,
+                () =>
+                {
+                    Volatile.Write(ref _isOpen, 0);
+                    _window = null;
+                    _onClosed();
+                });
 
-        if (_hwnd == IntPtr.Zero)
-        {
-            _current = null;
-            throw new InvalidOperationException($"Could not create settings window: {NativeMethods.LastErrorMessage()}");
-        }
-
-        NativeMethods.SetWindowText(_hwnd, "DisplayLullaby settings");
-        CreateControls();
-        NativeMethods.ShowWindow(_hwnd, NativeMethods.SwShow);
-        NativeMethods.SetForegroundWindow(_hwnd);
+            Volatile.Write(ref _isOpen, 1);
+            _window.Show();
+            _window.Activate();
+        });
     }
 
-    private void RegisterWindowClass()
+    public void Close()
     {
-        if (_classRegistered)
-        {
-            return;
-        }
+        AvaloniaUiHost.Invoke(() => _window?.Close());
+    }
+}
 
-        var instance = NativeMethods.GetModuleHandle(null);
-        var windowClass = new NativeMethods.WndClassEx
+internal sealed class AvaloniaSettingsWindow : Window
+{
+    private readonly Action _onSaved;
+    private readonly Action<TrayAction, string> _executeCommand;
+    private readonly Action _onCaptureStarted;
+    private readonly Action _onCaptureEnded;
+    private readonly Action _onClosed;
+    private readonly TextBlock _statusText;
+    private readonly Button _globalHotkeyButton;
+    private readonly Button _primaryHotkeyButton;
+    private readonly Button _secondaryHotkeyButton;
+    private readonly ComboBox _primaryTargetCombo;
+    private readonly ComboBox _secondaryTargetCombo;
+    private readonly ComboBox _powerModeCombo;
+    private readonly TextBox _idleMinutesTextBox;
+    private readonly TextBox _wakeDelayTextBox;
+    private AppSettings _settings;
+    private CaptureTarget _captureTarget;
+
+    public AvaloniaSettingsWindow(
+        AppSettings settings,
+        Action onSaved,
+        Action<TrayAction, string> executeCommand,
+        Action onCaptureStarted,
+        Action onCaptureEnded,
+        Action onClosed)
+    {
+        _settings = settings;
+        _onSaved = onSaved;
+        _executeCommand = executeCommand;
+        _onCaptureStarted = onCaptureStarted;
+        _onCaptureEnded = onCaptureEnded;
+        _onClosed = onClosed;
+
+        Title = "DisplayLullaby settings";
+        Width = 470;
+        SizeToContent = SizeToContent.Height;
+        CanResize = false;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        UseLayoutRounding = true;
+        FontFamily = new FontFamily("Inter, Segoe UI");
+        Background = Brush(246, 248, 252);
+
+        _statusText = new TextBlock
         {
-            cbSize = (uint)Marshal.SizeOf<NativeMethods.WndClassEx>(),
-            lpfnWndProc = WindowProc,
-            hInstance = instance,
-            hIcon = NativeMethods.LoadIcon(instance, new IntPtr(NativeMethods.IdIApplication)),
-            hIconSm = NativeMethods.LoadIcon(instance, new IntPtr(NativeMethods.IdIApplication)),
-            hCursor = NativeMethods.LoadCursor(IntPtr.Zero, new IntPtr(NativeMethods.IdcArrow)),
-            hbrBackground = new IntPtr(NativeMethods.ColorWindow + 1),
-            lpszClassName = ClassName
+            Text = "Ready.",
+            FontSize = 12,
+            Foreground = Brush(64, 92, 133),
+            VerticalAlignment = VerticalAlignment.Center
         };
 
-        var classAtom = NativeMethods.RegisterClassEx(ref windowClass);
-        if (classAtom == 0 && Marshal.GetLastWin32Error() != 1410)
+        _globalHotkeyButton = HotkeyButton(settings.GlobalOffHotkey, () => StartCapture(CaptureTarget.Global));
+        _primaryHotkeyButton = HotkeyButton(settings.PrimaryStandbyHotkey, () => StartCapture(CaptureTarget.Primary));
+        _secondaryHotkeyButton = HotkeyButton(settings.SecondaryStandbyHotkey, () => StartCapture(CaptureTarget.Secondary));
+
+        var targetOptions = BuildTargetOptions(settings.PrimaryStandbyTarget, settings.SecondaryStandbyTarget);
+        _primaryTargetCombo = Combo(targetOptions, settings.PrimaryStandbyTarget);
+        _secondaryTargetCombo = Combo(targetOptions, settings.SecondaryStandbyTarget);
+        _powerModeCombo = Combo(["Standby", "Suspend", "PowerOff", "SoftOff"], SerializePowerMode(settings.PowerMode));
+
+        _idleMinutesTextBox = NumberBox(settings.TemporaryStandbyIdleMinutes.ToString(), 48);
+        _wakeDelayTextBox = NumberBox(settings.TemporaryStandbyWakeDelaySeconds.ToString(), 42);
+
+        Content = BuildContent();
+        KeyDown += HandleKeyDown;
+        Closed += (_, _) =>
         {
-            throw new InvalidOperationException($"Could not register settings window class: {NativeMethods.LastErrorMessage()}");
-        }
-
-        _classRegistered = true;
-    }
-
-    private void CreateFonts()
-    {
-        _font = NativeMethods.CreateFont(
-            -Scale(10),
-            0,
-            0,
-            0,
-            NativeMethods.FwNormal,
-            0,
-            0,
-            0,
-            NativeMethods.DefaultCharset,
-            NativeMethods.OutDefaultPrecIs,
-            NativeMethods.ClipDefaultPrecIs,
-            NativeMethods.ClearTypeQuality,
-            NativeMethods.DefaultPitch,
-            "Segoe UI");
-
-        _titleFont = NativeMethods.CreateFont(
-            -Scale(16),
-            0,
-            0,
-            0,
-            NativeMethods.FwSemiBold,
-            0,
-            0,
-            0,
-            NativeMethods.DefaultCharset,
-            NativeMethods.OutDefaultPrecIs,
-            NativeMethods.ClipDefaultPrecIs,
-            NativeMethods.ClearTypeQuality,
-            NativeMethods.DefaultPitch,
-            "Segoe UI");
-
-        _sectionFont = NativeMethods.CreateFont(
-            -Scale(10),
-            0,
-            0,
-            0,
-            NativeMethods.FwSemiBold,
-            0,
-            0,
-            0,
-            NativeMethods.DefaultCharset,
-            NativeMethods.OutDefaultPrecIs,
-            NativeMethods.ClipDefaultPrecIs,
-            NativeMethods.ClearTypeQuality,
-            NativeMethods.DefaultPitch,
-            "Segoe UI");
-
-        _smallFont = NativeMethods.CreateFont(
-            -Scale(9),
-            0,
-            0,
-            0,
-            NativeMethods.FwNormal,
-            0,
-            0,
-            0,
-            NativeMethods.DefaultCharset,
-            NativeMethods.OutDefaultPrecIs,
-            NativeMethods.ClipDefaultPrecIs,
-            NativeMethods.ClearTypeQuality,
-            NativeMethods.DefaultPitch,
-            "Segoe UI");
-    }
-
-    private (int X, int Y, int Width, int Height) CalculateWindowBounds()
-    {
-        var (width, height) = CalculateOuterWindowSize(ClientWidth, ClientHeight);
-        var point = new NativeMethods.Point();
-        NativeMethods.GetCursorPos(out point);
-
-        var monitor = NativeMethods.MonitorFromPoint(point, NativeMethods.MonitorDefaultToNearest);
-        var info = new NativeMethods.MonitorInfoEx
-        {
-            cbSize = (uint)Marshal.SizeOf<NativeMethods.MonitorInfoEx>()
-        };
-
-        if (monitor != IntPtr.Zero && NativeMethods.GetMonitorInfo(monitor, ref info))
-        {
-            var x = info.rcWork.Left + Math.Max(0, (info.rcWork.Width - width) / 2);
-            var y = info.rcWork.Top + Math.Max(0, (info.rcWork.Height - height) / 2);
-            return (x, y, width, height);
-        }
-
-        return (100, 100, width, height);
-    }
-
-    private (int Width, int Height) CalculateOuterWindowSize(int clientWidth, int clientHeight)
-    {
-        var rect = new NativeMethods.Rect
-        {
-            Left = 0,
-            Top = 0,
-            Right = Scale(clientWidth),
-            Bottom = Scale(clientHeight)
-        };
-
-        if (NativeMethods.AdjustWindowRectEx(ref rect, NativeMethods.WsOverlappedWindow, false, 0))
-        {
-            return (rect.Width, rect.Height);
-        }
-
-        return (Scale(clientWidth), Scale(clientHeight) + Scale(42));
-    }
-
-    private void CreateControls()
-    {
-        _clickRegions.Clear();
-        AddClickRegion(IdCaptureGlobal, 166, 109, 62, 22);
-        AddClickRegion(IdCapturePrimary, 166, 134, 62, 22);
-        AddClickRegion(IdCaptureSecondary, 166, 159, 62, 22);
-        AddClickRegion(IdChoosePrimaryTarget, 250, 134, 140, 22);
-        AddClickRegion(IdChooseSecondaryTarget, 250, 159, 140, 22);
-        AddClickRegion(IdChoosePowerMode, 104, 222, 84, 22);
-
-        _idleMinutesEdit = CreateEdit(_settings.TemporaryStandbyIdleMinutes.ToString(), 244, 225, 24, 16, numbersOnly: true);
-        _wakeDelayEdit = CreateEdit(_settings.TemporaryStandbyWakeDelaySeconds.ToString(), 358, 225, 18, 16, numbersOnly: true);
-
-        AddClickRegion(IdTestPrimary, 14, 340, 76, 24);
-        AddClickRegion(IdTestSecondary, 98, 340, 88, 24);
-        AddClickRegion(IdTurnAllOff, 194, 340, 56, 24);
-        AddClickRegion(IdSave, 292, 340, 52, 24);
-        AddClickRegion(IdCancel, 352, 340, 54, 24);
-    }
-
-    private void PaintWindow()
-    {
-        var hdc = NativeMethods.BeginPaint(_hwnd, out var paint);
-        try
-        {
-            DrawSettingsSurface(hdc);
-        }
-        finally
-        {
-            NativeMethods.EndPaint(_hwnd, ref paint);
-        }
-    }
-
-    private void DrawSettingsSurface(IntPtr hdc)
-    {
-        NativeMethods.GetClientRect(_hwnd, out var clientRect);
-        FillRect(hdc, clientRect, ColorRef(246, 248, 252));
-
-        var headerRect = ScaleRect(0, 0, 420, 48);
-        FillRect(hdc, headerRect, ColorRef(238, 245, 253));
-
-        DrawRoundRect(hdc, 14, 8, 32, 32, 8, ColorRef(37, 99, 235), ColorRef(30, 64, 175));
-        DrawMonitorGlyph(hdc, 22, 17, 0.66);
-
-        DrawTextLine(hdc, "DisplayLullaby settings", 56, 7, 292, 22, _titleFont, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "Hotkeys, standby handoff, and display targets", 57, 28, 292, 16, _smallFont, ColorRef(71, 94, 131));
-
-        DrawCard(hdc, 12, 58, 396, 124, "Hotkeys");
-        DrawTextLine(hdc, "Command", 28, 86, 118, 16, _smallFont, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "Hotkey", 166, 86, 62, 16, _smallFont, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "Target", 250, 86, 100, 16, _smallFont, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "All monitors off", 28, 111, 128, 18, _font, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "Primary standby", 28, 136, 128, 18, _font, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "Secondary standby", 28, 161, 128, 18, _font, ColorRef(15, 23, 42));
-        DrawButton(hdc, IdCaptureGlobal, HotkeyText(CaptureTarget.Global), ButtonKind.Hotkey);
-        DrawButton(hdc, IdCapturePrimary, HotkeyText(CaptureTarget.Primary), ButtonKind.Hotkey);
-        DrawButton(hdc, IdCaptureSecondary, HotkeyText(CaptureTarget.Secondary), ButtonKind.Hotkey);
-        DrawButton(hdc, IdChoosePrimaryTarget, _settings.PrimaryStandbyTarget, ButtonKind.Selector);
-        DrawButton(hdc, IdChooseSecondaryTarget, _settings.SecondaryStandbyTarget, ButtonKind.Selector);
-
-        DrawCard(hdc, 12, 190, 396, 60, "Standby behavior");
-        DrawTextLine(hdc, "DDC mode", 28, 222, 66, 18, _font, ColorRef(15, 23, 42));
-        DrawButton(hdc, IdChoosePowerMode, SerializePowerMode(_settings.PowerMode), ButtonKind.Selector);
-        DrawTextLine(hdc, "Idle", 198, 222, 32, 18, _font, ColorRef(15, 23, 42));
-        DrawInputFrame(hdc, 238, 222, 36, 22);
-        DrawTextLine(hdc, "min", 280, 223, 24, 17, _smallFont, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "Wake", 306, 222, 38, 18, _font, ColorRef(15, 23, 42));
-        DrawInputFrame(hdc, 352, 222, 32, 22);
-        DrawTextLine(hdc, "sec", 390, 223, 22, 17, _smallFont, ColorRef(15, 23, 42));
-
-        DrawCard(hdc, 12, 258, 396, 60, "Detected displays");
-        DrawDisplaySummary(hdc, 28, 288);
-
-        DrawTextLine(hdc, _statusText, 14, 320, 278, 17, _smallFont, ColorRef(64, 92, 133));
-        var footerLine = ScaleRect(12, 334, 396, 1);
-        FillRect(hdc, footerLine, ColorRef(225, 232, 242));
-        DrawButton(hdc, IdTestPrimary, "Test primary", ButtonKind.Secondary);
-        DrawButton(hdc, IdTestSecondary, "Test secondary", ButtonKind.Secondary);
-        DrawButton(hdc, IdTurnAllOff, "All off", ButtonKind.Danger);
-        DrawButton(hdc, IdSave, "Save", ButtonKind.Primary);
-        DrawButton(hdc, IdCancel, "Cancel", ButtonKind.Secondary);
-    }
-
-    private void AddClickRegion(int id, int x, int y, int width, int height)
-    {
-        _clickRegions[id] = ScaleRect(x, y, width, height);
-    }
-
-    private void DrawInputFrame(IntPtr hdc, int x, int y, int width, int height)
-    {
-        DrawRoundRect(hdc, x, y, width, height, 6, ColorRef(255, 255, 255), ColorRef(194, 205, 221));
-    }
-
-    private void DrawCard(IntPtr hdc, int x, int y, int width, int height, string title)
-    {
-        DrawRoundRect(hdc, x, y, width, height, 10, ColorRef(255, 255, 255), ColorRef(218, 228, 240));
-        DrawTextLine(hdc, title, x + 18, y + 10, width - 36, 18, _sectionFont, ColorRef(32, 55, 83));
-    }
-
-    private void DrawDisplaySummary(IntPtr hdc, int x, int y)
-    {
-        var lines = BuildDisplaySummary().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-        for (var i = 0; i < Math.Min(lines.Length, 2); i++)
-        {
-            DrawTextLine(hdc, lines[i], x, y + (i * 15), 360, 14, _smallFont, ColorRef(15, 23, 42));
-        }
-    }
-
-    private string HotkeyText(CaptureTarget target)
-    {
-        if (_captureTarget == target)
-        {
-            return "Press key";
-        }
-
-        return target switch
-        {
-            CaptureTarget.Global => _settings.GlobalOffHotkey,
-            CaptureTarget.Primary => _settings.PrimaryStandbyHotkey,
-            CaptureTarget.Secondary => _settings.SecondaryStandbyHotkey,
-            _ => string.Empty
+            EndCapture(resumeHotkeys: true);
+            _onClosed();
         };
     }
 
-    private void DrawButton(IntPtr hdc, int id, string text, ButtonKind kind)
+    private Control BuildContent()
     {
-        if (!_clickRegions.TryGetValue(id, out var rect))
+        var root = new DockPanel
         {
-            return;
-        }
-
-        var pressed = _pressedCommandId == id;
-        var fill = kind switch
-        {
-            ButtonKind.Primary => pressed ? ColorRef(29, 78, 216) : ColorRef(37, 99, 235),
-            ButtonKind.Danger => pressed ? ColorRef(254, 243, 199) : ColorRef(255, 251, 235),
-            ButtonKind.Hotkey => pressed ? ColorRef(236, 244, 255) : ColorRef(248, 251, 255),
-            _ => pressed ? ColorRef(248, 250, 252) : ColorRef(255, 255, 255)
-        };
-        var border = kind switch
-        {
-            ButtonKind.Primary => ColorRef(29, 78, 216),
-            ButtonKind.Danger => ColorRef(245, 158, 11),
-            ButtonKind.Hotkey => ColorRef(168, 198, 235),
-            _ => ColorRef(176, 190, 210)
-        };
-        var textColor = kind switch
-        {
-            ButtonKind.Primary => ColorRef(255, 255, 255),
-            ButtonKind.Danger => ColorRef(120, 53, 15),
-            ButtonKind.Hotkey => ColorRef(29, 78, 216),
-            _ => ColorRef(15, 23, 42)
+            LastChildFill = true
         };
 
-        DrawRoundRectRaw(hdc, rect, Scale(kind == ButtonKind.Primary ? 7 : 6), fill, border);
-        var textRect = rect;
-        if (pressed)
+        var header = BuildHeader();
+        DockPanel.SetDock(header, Dock.Top);
+        root.Children.Add(header);
+
+        var body = new StackPanel
         {
-            textRect.Left += Scale(1);
-            textRect.Top += Scale(1);
+            Spacing = 8,
+            Margin = new Thickness(10, 10, 10, 0)
+        };
+        body.Children.Add(BuildHotkeyCard());
+        body.Children.Add(BuildBehaviorCard());
+        body.Children.Add(BuildDisplaysCard());
+
+        DockPanel.SetDock(body, Dock.Top);
+        root.Children.Add(body);
+
+        var footer = BuildFooter();
+        DockPanel.SetDock(footer, Dock.Bottom);
+        root.Children.Add(footer);
+
+        return root;
+    }
+
+    private Control BuildHeader()
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star)
+            },
+            Margin = new Thickness(0)
+        };
+
+        var icon = new Border
+        {
+            Width = 44,
+            Height = 44,
+            CornerRadius = new CornerRadius(9),
+            Background = Brush(37, 99, 235),
+            BorderBrush = Brush(30, 64, 175),
+            BorderThickness = new Thickness(1),
+            Child = new TextBlock
+            {
+                Text = "Display",
+                FontSize = 8,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center
+            }
+        };
+
+        var text = new StackPanel
+        {
+            Spacing = 1,
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        text.Children.Add(new TextBlock
+        {
+            Text = "DisplayLullaby settings",
+            FontSize = 21,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = Brush(15, 23, 42)
+        });
+        text.Children.Add(new TextBlock
+        {
+            Text = "Hotkeys, standby handoff, and display targets",
+            FontSize = 12,
+            Foreground = Brush(55, 83, 128)
+        });
+
+        Grid.SetColumn(icon, 0);
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(icon);
+        grid.Children.Add(text);
+        return new Border
+        {
+            Background = Brush(238, 245, 253),
+            Padding = new Thickness(16, 12, 16, 12),
+            Child = grid
+        };
+    }
+
+    private Control BuildHotkeyCard()
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(1.45, GridUnitType.Star),
+                new ColumnDefinition(78, GridUnitType.Pixel),
+                new ColumnDefinition(154, GridUnitType.Pixel)
+            },
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto)
+            },
+            ColumnSpacing = 10,
+            RowSpacing = 6
+        };
+
+        AddCell(grid, HeaderText("Command"), 0, 0);
+        AddCell(grid, HeaderText("Hotkey"), 0, 1);
+        AddCell(grid, HeaderText("Target"), 0, 2);
+        AddHotkeyRow(grid, 1, "All monitors off", _globalHotkeyButton, null);
+        AddHotkeyRow(grid, 2, "Primary standby", _primaryHotkeyButton, _primaryTargetCombo);
+        AddHotkeyRow(grid, 3, "Secondary standby", _secondaryHotkeyButton, _secondaryTargetCombo);
+
+        return Card("Hotkeys", grid);
+    }
+
+    private Control BuildBehaviorCard()
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(122, GridUnitType.Pixel),
+                new ColumnDefinition(1, GridUnitType.Star),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(48, GridUnitType.Pixel),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(42, GridUnitType.Pixel),
+                new ColumnDefinition(GridLength.Auto)
+            },
+            ColumnSpacing = 6,
+            RowSpacing = 7,
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto)
+            }
+        };
+
+        AddCell(grid, Label("DDC mode"), 0, 0);
+        AddCell(grid, _powerModeCombo, 0, 1);
+        AddCell(grid, Label("Idle"), 1, 0);
+        AddCell(grid, _idleMinutesTextBox, 1, 1);
+        AddCell(grid, Unit("min"), 1, 2);
+        AddCell(grid, Label("Wake"), 1, 3);
+        AddCell(grid, _wakeDelayTextBox, 1, 4);
+        AddCell(grid, Unit("sec"), 1, 5);
+
+        return Card("Standby behavior", grid);
+    }
+
+    private Control BuildDisplaysCard()
+    {
+        var stack = new StackPanel
+        {
+            Spacing = 4
+        };
+
+        foreach (var row in BuildDisplayRows())
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = row,
+                FontSize = 12,
+                Foreground = Brush(15, 23, 42)
+            });
         }
 
-        if (kind == ButtonKind.Selector)
+        return Card("Detected displays", stack);
+    }
+
+    private Control BuildFooter()
+    {
+        var grid = new Grid
         {
-            DrawTextLineRaw(hdc, text, textRect, _font, textColor);
-            DrawSelectorChevron(hdc, rect);
-            return;
-        }
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(1, GridUnitType.Star),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto)
+            },
+            ColumnSpacing = 7,
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto)
+            },
+            Margin = new Thickness(10, 7, 10, 10)
+        };
 
-        DrawCenteredText(hdc, text, textRect, _font, textColor);
+        AddCell(grid, _statusText, 0, 0, columnSpan: 6);
+
+        var testPrimary = SecondaryButton("Test primary", () => TestTemporaryStandby(primary: true), 86);
+        var testSecondary = SecondaryButton("Test secondary", () => TestTemporaryStandby(primary: false), 98);
+        var allOff = SecondaryButton("All off", TurnAllMonitorsOff, 64);
+        allOff.Foreground = Brush(120, 53, 15);
+        allOff.BorderBrush = Brush(245, 158, 11);
+        allOff.Background = Brush(255, 251, 235);
+        var save = PrimaryButton("Save", Save, 68);
+        var cancel = SecondaryButton("Cancel", Close, 70);
+
+        AddCell(grid, testPrimary, 1, 0);
+        AddCell(grid, testSecondary, 1, 1);
+        AddCell(grid, allOff, 1, 2);
+        AddCell(grid, save, 1, 4);
+        AddCell(grid, cancel, 1, 5);
+
+        return grid;
     }
 
-    private void DrawMonitorGlyph(IntPtr hdc, int x, int y)
+    private static Border Card(string title, Control content)
     {
-        DrawMonitorGlyph(hdc, x, y, 1.0);
-    }
-
-    private void DrawMonitorGlyph(IntPtr hdc, int x, int y, double scale)
-    {
-        var pen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(Math.Max(1, (int)Math.Round(2 * scale))), ColorRef(255, 255, 255));
-        var brush = NativeMethods.CreateSolidBrush(ColorRef(219, 234, 254));
-        var oldPen = NativeMethods.SelectObject(hdc, pen);
-        var oldBrush = NativeMethods.SelectObject(hdc, brush);
-
-        var screenWidth = (int)Math.Round(21 * scale);
-        var screenHeight = (int)Math.Round(16 * scale);
-        NativeMethods.RoundRect(hdc, Scale(x), Scale(y), Scale(x + screenWidth), Scale(y + screenHeight), Scale(4), Scale(4));
-        var standRect = ScaleRect(x + (int)Math.Round(8 * scale), y + (int)Math.Round(18 * scale), Math.Max(3, (int)Math.Round(5 * scale)), Math.Max(4, (int)Math.Round(6 * scale)));
-        FillRect(hdc, standRect, ColorRef(255, 255, 255));
-        var footRect = ScaleRect(x + (int)Math.Round(4 * scale), y + (int)Math.Round(25 * scale), Math.Max(9, (int)Math.Round(14 * scale)), Math.Max(2, (int)Math.Round(3 * scale)));
-        FillRect(hdc, footRect, ColorRef(255, 255, 255));
-
-        NativeMethods.SelectObject(hdc, oldBrush);
-        NativeMethods.SelectObject(hdc, oldPen);
-        NativeMethods.DeleteObject(brush);
-        NativeMethods.DeleteObject(pen);
-    }
-
-    private void DrawTextLine(IntPtr hdc, string text, int x, int y, int width, int height, IntPtr font, uint color)
-    {
-        var rect = ScaleRect(x, y, width, height);
-        var oldFont = font == IntPtr.Zero ? IntPtr.Zero : NativeMethods.SelectObject(hdc, font);
-        NativeMethods.SetBkMode(hdc, NativeMethods.Transparent);
-        NativeMethods.SetTextColor(hdc, color);
-        NativeMethods.DrawText(
-            hdc,
-            text,
-            text.Length,
-            ref rect,
-            NativeMethods.DtLeft | NativeMethods.DtVCenter | NativeMethods.DtSingleLine | NativeMethods.DtNoPrefix | NativeMethods.DtEndEllipsis);
-
-        if (oldFont != IntPtr.Zero)
+        var stack = new StackPanel
         {
-            NativeMethods.SelectObject(hdc, oldFont);
-        }
-    }
-
-    private void DrawRoundRect(IntPtr hdc, int x, int y, int width, int height, int radius, uint fillColor, uint borderColor)
-    {
-        var pen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(1), borderColor);
-        var brush = NativeMethods.CreateSolidBrush(fillColor);
-        var oldPen = NativeMethods.SelectObject(hdc, pen);
-        var oldBrush = NativeMethods.SelectObject(hdc, brush);
-
-        NativeMethods.RoundRect(
-            hdc,
-            Scale(x),
-            Scale(y),
-            Scale(x + width),
-            Scale(y + height),
-            Scale(radius),
-            Scale(radius));
-
-        NativeMethods.SelectObject(hdc, oldBrush);
-        NativeMethods.SelectObject(hdc, oldPen);
-        NativeMethods.DeleteObject(brush);
-        NativeMethods.DeleteObject(pen);
-    }
-
-    private void DrawOwnerButton(nint lParam)
-    {
-        var item = Marshal.PtrToStructure<NativeMethods.DrawItemStruct>((IntPtr)lParam);
-        var id = (int)item.CtlID;
-        var text = ReadText(item.hwndItem);
-        var isPressed = (item.itemState & NativeMethods.OdsSelected) != 0;
-        var isPrimary = id == IdSave;
-        var isHotkey = id is IdCaptureGlobal or IdCapturePrimary or IdCaptureSecondary;
-        var isSelector = id is IdChoosePrimaryTarget or IdChooseSecondaryTarget or IdChoosePowerMode;
-        var isDanger = id == IdTurnAllOff;
-
-        var fill = isPrimary ? ColorRef(37, 99, 235)
-            : isDanger ? ColorRef(255, 251, 235)
-            : isHotkey ? ColorRef(248, 251, 255)
-            : isSelector ? ColorRef(255, 255, 255)
-            : ColorRef(255, 255, 255);
-        var border = isPrimary ? ColorRef(29, 78, 216)
-            : isDanger ? ColorRef(245, 158, 11)
-            : isHotkey ? ColorRef(168, 198, 235)
-            : isSelector ? ColorRef(176, 190, 210)
-            : ColorRef(203, 213, 225);
-        var textColor = isPrimary ? ColorRef(255, 255, 255)
-            : isDanger ? ColorRef(120, 53, 15)
-            : isHotkey ? ColorRef(29, 78, 216)
-            : ColorRef(15, 23, 42);
-
-        if (isPressed)
+            Spacing = 8
+        };
+        stack.Children.Add(new TextBlock
         {
-            fill = isPrimary ? ColorRef(29, 78, 216)
-                : isDanger ? ColorRef(254, 243, 199)
-                : isHotkey ? ColorRef(236, 244, 255)
-                : isSelector ? ColorRef(248, 250, 252)
-                : ColorRef(241, 245, 249);
-        }
+            Text = title,
+            FontSize = 14,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = Brush(32, 55, 83)
+        });
+        stack.Children.Add(content);
 
-        DrawRoundRectRaw(item.hDC, item.rcItem, Scale(isPrimary ? 7 : 6), fill, border);
-        var textRect = item.rcItem;
-        if (isPressed)
+        return new Border
         {
-            textRect.Left += Scale(1);
-            textRect.Top += Scale(1);
-        }
-
-        if (isSelector)
-        {
-            DrawTextLineRaw(item.hDC, text, textRect, _font, textColor);
-            DrawSelectorChevron(item.hDC, item.rcItem);
-        }
-        else
-        {
-            DrawCenteredText(item.hDC, text, textRect, _font, textColor);
-        }
+            Background = Brushes.White,
+            BorderBrush = Brush(218, 228, 240),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(14, 12, 14, 12),
+            Child = stack
+        };
     }
 
-    private void DrawSelectorChevron(IntPtr hdc, NativeMethods.Rect rect)
-    {
-        var pen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(1), ColorRef(71, 85, 105));
-        var oldPen = NativeMethods.SelectObject(hdc, pen);
-        var centerX = rect.Right - Scale(15);
-        var centerY = rect.Top + (rect.Height / 2) + Scale(1);
-        var size = Scale(4);
-        NativeMethods.MoveToEx(hdc, centerX - size, centerY - (size / 2), out _);
-        NativeMethods.LineTo(hdc, centerX, centerY + (size / 2));
-        NativeMethods.LineTo(hdc, centerX + size, centerY - (size / 2));
-        NativeMethods.SelectObject(hdc, oldPen);
-        NativeMethods.DeleteObject(pen);
-    }
-
-    private void DrawRoundRectRaw(IntPtr hdc, NativeMethods.Rect rect, int radius, uint fillColor, uint borderColor)
-    {
-        var pen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(1), borderColor);
-        var brush = NativeMethods.CreateSolidBrush(fillColor);
-        var oldPen = NativeMethods.SelectObject(hdc, pen);
-        var oldBrush = NativeMethods.SelectObject(hdc, brush);
-
-        NativeMethods.RoundRect(hdc, rect.Left, rect.Top, rect.Right, rect.Bottom, radius, radius);
-
-        NativeMethods.SelectObject(hdc, oldBrush);
-        NativeMethods.SelectObject(hdc, oldPen);
-        NativeMethods.DeleteObject(brush);
-        NativeMethods.DeleteObject(pen);
-    }
-
-    private void DrawCenteredText(IntPtr hdc, string text, NativeMethods.Rect rect, IntPtr font, uint color)
-    {
-        var oldFont = font == IntPtr.Zero ? IntPtr.Zero : NativeMethods.SelectObject(hdc, font);
-        NativeMethods.SetBkMode(hdc, NativeMethods.Transparent);
-        NativeMethods.SetTextColor(hdc, color);
-        NativeMethods.DrawText(
-            hdc,
-            text,
-            text.Length,
-            ref rect,
-            NativeMethods.DtCenter | NativeMethods.DtVCenter | NativeMethods.DtSingleLine | NativeMethods.DtNoPrefix | NativeMethods.DtEndEllipsis);
-
-        if (oldFont != IntPtr.Zero)
-        {
-            NativeMethods.SelectObject(hdc, oldFont);
-        }
-    }
-
-    private void DrawTextLineRaw(IntPtr hdc, string text, NativeMethods.Rect rect, IntPtr font, uint color)
-    {
-        rect.Left += Scale(10);
-        rect.Right -= Scale(26);
-        var oldFont = font == IntPtr.Zero ? IntPtr.Zero : NativeMethods.SelectObject(hdc, font);
-        NativeMethods.SetBkMode(hdc, NativeMethods.Transparent);
-        NativeMethods.SetTextColor(hdc, color);
-        NativeMethods.DrawText(
-            hdc,
-            text,
-            text.Length,
-            ref rect,
-            NativeMethods.DtLeft | NativeMethods.DtVCenter | NativeMethods.DtSingleLine | NativeMethods.DtNoPrefix | NativeMethods.DtEndEllipsis);
-
-        if (oldFont != IntPtr.Zero)
-        {
-            NativeMethods.SelectObject(hdc, oldFont);
-        }
-    }
-
-    private void FillRect(IntPtr hdc, NativeMethods.Rect rect, uint color)
-    {
-        var brush = NativeMethods.CreateSolidBrush(color);
-        NativeMethods.FillRect(hdc, ref rect, brush);
-        NativeMethods.DeleteObject(brush);
-    }
-
-    private NativeMethods.Rect ScaleRect(int x, int y, int width, int height) =>
+    private static TextBlock HeaderText(string text) =>
         new()
         {
-            Left = Scale(x),
-            Top = Scale(y),
-            Right = Scale(x + width),
-            Bottom = Scale(y + height)
+            Text = text,
+            FontSize = 11,
+            Foreground = Brush(15, 23, 42)
         };
 
-    private static uint ColorRef(byte red, byte green, byte blue) =>
-        (uint)(red | (green << 8) | (blue << 16));
-
-    private IntPtr CreateLabel(string text, int x, int y, int width, int height, IntPtr font = default)
-    {
-        var handle = CreateControl(
-            "STATIC",
-            text,
-            NativeMethods.WsChild | NativeMethods.WsVisible | NativeMethods.SsLeft,
-            0,
-            0,
-            x,
-            y,
-            width,
-            height);
-        SetControlFont(handle, font == default ? _font : font);
-        return handle;
-    }
-
-    private IntPtr CreateButton(string text, int id, int x, int y, int width, int height, bool defaultButton = false)
-    {
-        var style = NativeMethods.WsChild |
-                    NativeMethods.WsVisible |
-                    NativeMethods.WsTabStop |
-                    NativeMethods.BsOwnerDraw |
-                    (defaultButton ? NativeMethods.BsDefPushButton : NativeMethods.BsPushButton);
-        var handle = CreateControl("BUTTON", text, style, 0, id, x, y, width, height);
-        SetControlFont(handle, _font);
-        return handle;
-    }
-
-    private IntPtr CreateEdit(string text, int x, int y, int width, int height, bool numbersOnly)
-    {
-        var style = NativeMethods.WsChild |
-                    NativeMethods.WsVisible |
-                    NativeMethods.WsTabStop |
-                    NativeMethods.EsAutoHScroll |
-                    (numbersOnly ? NativeMethods.EsNumber : 0);
-        var handle = CreateControl("EDIT", text, style, 0, 0, x, y, width, height);
-        SetControlFont(handle, _font);
-        return handle;
-    }
-
-    private IntPtr CreateTargetCombo(string selectedTarget, int x, int y, int width, int height)
-    {
-        var style = NativeMethods.WsChild |
-                    NativeMethods.WsVisible |
-                    NativeMethods.WsTabStop |
-                    NativeMethods.CbsDropdown |
-                    NativeMethods.CbsHasStrings |
-                    NativeMethods.WsVScroll;
-        var handle = CreateControl("COMBOBOX", string.Empty, style, 0, 0, x, y, width, height);
-        SetControlFont(handle, _font);
-
-        foreach (var option in BuildTargetOptions())
+    private static TextBlock Label(string text) =>
+        new()
         {
-            NativeMethods.SendMessageText(handle, NativeMethods.CbAddString, 0, option);
+            Text = text,
+            FontSize = 13,
+            Foreground = Brush(15, 23, 42),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+    private static TextBlock Unit(string text) =>
+        new()
+        {
+            Text = text,
+            FontSize = 11,
+            Foreground = Brush(15, 23, 42),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+    private static Button HotkeyButton(string text, Action click)
+    {
+        var button = SecondaryButton(text, click, 78);
+        button.Foreground = Brush(29, 78, 216);
+        button.Background = Brush(248, 251, 255);
+        return button;
+    }
+
+    private static Button PrimaryButton(string text, Action click, double width)
+    {
+        var button = Button(text, click, width);
+        button.Background = Brush(37, 99, 235);
+        button.Foreground = Brushes.White;
+        button.BorderBrush = Brush(29, 78, 216);
+        return button;
+    }
+
+    private static Button SecondaryButton(string text, Action click, double width) => Button(text, click, width);
+
+    private static Button Button(string text, Action click, double width)
+    {
+        var button = new Button
+        {
+            Content = text,
+            Width = width,
+            MinHeight = 30,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(10, 4),
+            FontSize = 12
+        };
+        button.Click += (_, _) => click();
+        return button;
+    }
+
+    private static ComboBox Combo(string[] items, string selected)
+    {
+        var combo = new ComboBox
+        {
+            ItemsSource = items,
+            SelectedItem = items.FirstOrDefault(item => item.Equals(selected, StringComparison.OrdinalIgnoreCase)) ?? selected,
+            MinHeight = 30,
+            FontSize = 12,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        return combo;
+    }
+
+    private static TextBox NumberBox(string text, double width) =>
+        new()
+        {
+            Text = text,
+            Width = width,
+            MinHeight = 30,
+            FontSize = 12,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(6, 4)
+        };
+
+    private static void AddHotkeyRow(Grid grid, int row, string label, Button hotkey, ComboBox? target)
+    {
+        AddCell(grid, Label(label), row, 0);
+        AddCell(grid, hotkey, row, 1);
+        if (target is not null)
+        {
+            AddCell(grid, target, row, 2);
+        }
+    }
+
+    private static void AddCell(Grid grid, Control control, int row, int column, int columnSpan = 1)
+    {
+        Grid.SetRow(control, row);
+        Grid.SetColumn(control, column);
+        if (columnSpan > 1)
+        {
+            Grid.SetColumnSpan(control, columnSpan);
         }
 
-        NativeMethods.SetWindowText(handle, selectedTarget);
-        return handle;
-    }
-
-    private IntPtr CreatePowerModeCombo(MonitorPowerMode selectedMode, int x, int y, int width, int height)
-    {
-        var style = NativeMethods.WsChild |
-                    NativeMethods.WsVisible |
-                    NativeMethods.WsTabStop |
-                    NativeMethods.CbsDropdownList |
-                    NativeMethods.CbsHasStrings;
-        var handle = CreateControl("COMBOBOX", string.Empty, style, 0, 0, x, y, width, height);
-        SetControlFont(handle, _font);
-
-        var modes = new[] { "Standby", "Suspend", "PowerOff", "SoftOff" };
-        for (var i = 0; i < modes.Length; i++)
-        {
-            NativeMethods.SendMessageText(handle, NativeMethods.CbAddString, 0, modes[i]);
-            if (modes[i].Equals(SerializePowerMode(selectedMode), StringComparison.OrdinalIgnoreCase))
-            {
-                NativeMethods.SendMessage(handle, NativeMethods.CbSetCurSel, (nuint)i, 0);
-            }
-        }
-
-        return handle;
-    }
-
-    private IntPtr CreateControl(
-        string className,
-        string text,
-        uint style,
-        uint exStyle,
-        int id,
-        int x,
-        int y,
-        int width,
-        int height)
-    {
-        var handle = NativeMethods.CreateWindowEx(
-            exStyle,
-            className,
-            text,
-            style,
-            Scale(x),
-            Scale(y),
-            Scale(width),
-            Scale(height),
-            _hwnd,
-            new IntPtr(id),
-            NativeMethods.GetModuleHandle(null),
-            IntPtr.Zero);
-
-        if (handle == IntPtr.Zero)
-        {
-            throw new InvalidOperationException($"Could not create {className} control: {NativeMethods.LastErrorMessage()}");
-        }
-
-        return handle;
-    }
-
-    private void SetControlFont(IntPtr handle, IntPtr font)
-    {
-        if (font != IntPtr.Zero)
-        {
-            NativeMethods.SendMessage(handle, NativeMethods.WmSetFont, ToNuint(font), 1);
-        }
+        grid.Children.Add(control);
     }
 
     private void StartCapture(CaptureTarget target)
     {
-        EndCapture(resumeHotkeys: true);
         _captureTarget = target;
         _onCaptureStarted();
-
+        UpdateHotkeyButtons();
         SetStatus(target switch
         {
             CaptureTarget.Global => "Press a key for all monitors off.",
-            CaptureTarget.Primary => "Press a key for primary temporary standby.",
-            CaptureTarget.Secondary => "Press a key for secondary temporary standby.",
+            CaptureTarget.Primary => "Press a key for primary standby.",
+            CaptureTarget.Secondary => "Press a key for secondary standby.",
             _ => "Press a key."
         });
-
-        NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
-        NativeMethods.SetFocus(_hwnd);
+        Focus();
     }
 
     private void EndCapture(bool resumeHotkeys)
@@ -784,80 +529,93 @@ internal sealed class SettingsWindow
         }
 
         _captureTarget = CaptureTarget.None;
-        NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
-
+        UpdateHotkeyButtons();
         if (resumeHotkeys)
         {
             _onCaptureEnded();
         }
     }
 
-    private void CaptureKey(int virtualKey)
+    private void UpdateHotkeyButtons()
     {
-        if (virtualKey == NativeMethods.VkEscape)
+        _globalHotkeyButton.Content = _captureTarget == CaptureTarget.Global ? "Press key" : _settings.GlobalOffHotkey;
+        _primaryHotkeyButton.Content = _captureTarget == CaptureTarget.Primary ? "Press key" : _settings.PrimaryStandbyHotkey;
+        _secondaryHotkeyButton.Content = _captureTarget == CaptureTarget.Secondary ? "Press key" : _settings.SecondaryStandbyHotkey;
+    }
+
+    private void HandleKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_captureTarget != CaptureTarget.None)
+        {
+            e.Handled = true;
+            CaptureKey(e);
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            Close();
+        }
+    }
+
+    private void CaptureKey(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
         {
             SetStatus("Hotkey capture canceled.");
             EndCapture(resumeHotkeys: true);
             return;
         }
 
-        if (IsModifierKey(virtualKey))
+        if (IsModifierKey(e.Key))
         {
             return;
         }
 
-        var keyText = FormatVirtualKey(virtualKey);
-        if (keyText.Length == 0)
+        var chord = FormatChord(e);
+        if (chord.Length == 0)
         {
             SetStatus("That key cannot be used as a hotkey.");
             return;
         }
 
-        var chord = BuildChord(keyText);
         if (!AppConfig.TryValidateHotkeyText(chord, out var warning))
         {
             SetStatus(warning);
             return;
         }
 
-        switch (_captureTarget)
+        _settings = _captureTarget switch
         {
-            case CaptureTarget.Global:
-                _settings = _settings with { GlobalOffHotkey = chord };
-                break;
-            case CaptureTarget.Primary:
-                _settings = _settings with { PrimaryStandbyHotkey = chord };
-                break;
-            case CaptureTarget.Secondary:
-                _settings = _settings with { SecondaryStandbyHotkey = chord };
-                break;
-        }
+            CaptureTarget.Global => _settings with { GlobalOffHotkey = chord },
+            CaptureTarget.Primary => _settings with { PrimaryStandbyHotkey = chord },
+            CaptureTarget.Secondary => _settings with { SecondaryStandbyHotkey = chord },
+            _ => _settings
+        };
 
-        SetStatus($"Captured {chord}.");
         EndCapture(resumeHotkeys: true);
+        SetStatus($"Hotkey set to {chord}.");
     }
 
-    private bool TrySave()
+    private void Save()
     {
         EndCapture(resumeHotkeys: true);
-
         if (!TryReadSettings(out var settings, out var warning))
         {
             SetStatus(warning);
-            return false;
+            return;
         }
 
         if (!AppConfig.TryValidateSettings(settings, out warning))
         {
             SetStatus(warning);
-            return false;
+            return;
         }
 
         AppConfig.SaveSettings(settings);
         _settings = settings;
         _onSaved();
         SetStatus("Saved. Hotkeys applied.");
-        return true;
     }
 
     private bool TryReadSettings(out AppSettings settings, out string warning)
@@ -865,23 +623,27 @@ internal sealed class SettingsWindow
         settings = _settings;
         warning = string.Empty;
 
-        if (!int.TryParse(ReadText(_idleMinutesEdit).Trim(), out var idleMinutes))
+        if (!int.TryParse((_idleMinutesTextBox.Text ?? string.Empty).Trim(), out var idleMinutes))
         {
             warning = "Idle handoff minutes must be a number.";
             return false;
         }
 
-        if (!int.TryParse(ReadText(_wakeDelayEdit).Trim(), out var wakeDelaySeconds))
+        if (!int.TryParse((_wakeDelayTextBox.Text ?? string.Empty).Trim(), out var wakeDelaySeconds))
         {
             warning = "Wake delay seconds must be a number.";
             return false;
         }
 
+        var primaryTarget = (_primaryTargetCombo.SelectedItem as string ?? _settings.PrimaryStandbyTarget).Trim();
+        var secondaryTarget = (_secondaryTargetCombo.SelectedItem as string ?? _settings.SecondaryStandbyTarget).Trim();
+        var powerMode = ParsePowerMode(_powerModeCombo.SelectedItem as string ?? SerializePowerMode(_settings.PowerMode));
+
         settings = _settings with
         {
-            PrimaryStandbyTarget = _settings.PrimaryStandbyTarget,
-            SecondaryStandbyTarget = _settings.SecondaryStandbyTarget,
-            PowerMode = _settings.PowerMode,
+            PrimaryStandbyTarget = primaryTarget,
+            SecondaryStandbyTarget = secondaryTarget,
+            PowerMode = powerMode,
             TemporaryStandbyIdleMinutes = idleMinutes,
             TemporaryStandbyWakeDelaySeconds = wakeDelaySeconds
         };
@@ -892,7 +654,10 @@ internal sealed class SettingsWindow
     private void TestTemporaryStandby(bool primary)
     {
         EndCapture(resumeHotkeys: true);
-        var target = (primary ? _settings.PrimaryStandbyTarget : _settings.SecondaryStandbyTarget).Trim();
+        var target = (primary
+            ? _primaryTargetCombo.SelectedItem as string ?? _settings.PrimaryStandbyTarget
+            : _secondaryTargetCombo.SelectedItem as string ?? _settings.SecondaryStandbyTarget).Trim();
+
         if (target.Length == 0)
         {
             target = primary ? "primary" : "secondary";
@@ -909,95 +674,13 @@ internal sealed class SettingsWindow
         SetStatus("Global monitor-off command sent.");
     }
 
-    private void ShowTargetMenu(bool primary)
-    {
-        EndCapture(resumeHotkeys: true);
-        var current = (primary ? _settings.PrimaryStandbyTarget : _settings.SecondaryStandbyTarget).Trim();
-        var selected = ShowSelectorMenu(BuildTargetOptions(current), current, SelectorMenuBase);
-        if (selected.Length == 0)
-        {
-            return;
-        }
-
-        _settings = primary
-            ? _settings with { PrimaryStandbyTarget = selected }
-            : _settings with { SecondaryStandbyTarget = selected };
-        SetStatus(primary ? "Primary target updated." : "Secondary target updated.");
-    }
-
-    private void ShowPowerModeMenu()
-    {
-        EndCapture(resumeHotkeys: true);
-        var current = SerializePowerMode(_settings.PowerMode);
-        var selected = ShowSelectorMenu(
-            ["Standby", "Suspend", "PowerOff", "SoftOff"],
-            current,
-            SelectorMenuBase + 100);
-        if (selected.Length == 0)
-        {
-            return;
-        }
-
-        _settings = _settings with { PowerMode = ParsePowerMode(selected) };
-        SetStatus("DDC mode updated.");
-    }
-
-    private string ShowSelectorMenu(string[] options, string current, int idBase)
-    {
-        if (options.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        var menu = NativeMethods.CreatePopupMenu();
-        if (menu == IntPtr.Zero)
-        {
-            return string.Empty;
-        }
-
-        try
-        {
-            for (var i = 0; i < options.Length; i++)
-            {
-                var flags = NativeMethods.MfString;
-                if (options[i].Equals(current, StringComparison.OrdinalIgnoreCase))
-                {
-                    flags |= NativeMethods.MfChecked;
-                }
-
-                NativeMethods.AppendMenu(menu, flags, (nuint)(idBase + i), options[i]);
-            }
-
-            if (!NativeMethods.GetCursorPos(out var point))
-            {
-                point = new NativeMethods.Point();
-            }
-
-            NativeMethods.SetForegroundWindow(_hwnd);
-            var command = NativeMethods.TrackPopupMenu(
-                menu,
-                NativeMethods.TpmReturNCmd | NativeMethods.TpmRightButton,
-                point.X,
-                point.Y,
-                0,
-                _hwnd,
-                IntPtr.Zero);
-            var index = (int)command - idBase;
-            return index >= 0 && index < options.Length ? options[index] : string.Empty;
-        }
-        finally
-        {
-            NativeMethods.DestroyMenu(menu);
-        }
-    }
-
-    private string[] BuildTargetOptions(string selectedTarget)
+    private static string[] BuildTargetOptions(params string[] currentValues)
     {
         var options = new List<string> { "primary", "secondary" };
-        if (!string.IsNullOrWhiteSpace(selectedTarget) &&
-            !options.Contains(selectedTarget, StringComparer.OrdinalIgnoreCase))
+
+        foreach (var value in currentValues)
         {
-            options.Add(selectedTarget);
+            AddOption(options, value);
         }
 
         try
@@ -1005,139 +688,52 @@ internal sealed class SettingsWindow
             using var session = MonitorController.OpenSession();
             foreach (var target in session.Targets)
             {
-                var deviceName = TrimDeviceName(target.DeviceName);
-                if (!string.IsNullOrWhiteSpace(deviceName) &&
-                    !options.Contains(deviceName, StringComparer.OrdinalIgnoreCase))
-                {
-                    options.Add(deviceName);
-                }
+                AddOption(options, TrimDeviceName(target.DeviceName));
+                AddOption(options, target.Id.ToString());
             }
         }
         catch
         {
-            // The target text remains editable even when display enumeration fails.
+            // The settings UI can still edit existing logical targets if DDC/CI enumeration fails.
         }
 
         return options.ToArray();
     }
 
-    private string[] BuildTargetOptions() => BuildTargetOptions(string.Empty);
-
-    private string BuildDisplaySummary()
+    private static IEnumerable<string> BuildDisplayRows()
     {
         try
         {
             using var session = MonitorController.OpenSession();
             if (session.Targets.Count == 0)
             {
-                return "No DDC/CI displays found.";
+                return ["No DDC/CI displays detected."];
             }
 
-            return string.Join(
-                Environment.NewLine,
-                session.Targets.Select(static target =>
-                    $"{TrimDeviceName(target.DeviceName)}  {(target.IsPrimary ? "primary" : "display")}  {target.Description}"));
+            return session.Targets
+                .Take(3)
+                .Select(target => $"{TrimDeviceName(target.DeviceName)}  {(target.IsPrimary ? "primary" : "display")}  {target.Description}")
+                .ToArray();
         }
         catch
         {
-            return "Could not read displays.";
+            return ["Could not read displays."];
         }
     }
 
-    private void SetStatus(string text)
+    private static void AddOption(List<string> options, string value)
     {
-        _statusText = text;
-        NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
+        var trimmed = value.Trim();
+        if (trimmed.Length > 0 && !options.Any(option => option.Equals(trimmed, StringComparison.OrdinalIgnoreCase)))
+        {
+            options.Add(trimmed);
+        }
     }
 
-    private string ReadText(IntPtr handle)
-    {
-        var length = Math.Max(0, NativeMethods.GetWindowTextLength(handle));
-        var builder = new StringBuilder(length + 1);
-        NativeMethods.GetWindowText(handle, builder, builder.Capacity);
-        return builder.ToString();
-    }
-
-    private static string BuildChord(string keyText)
-    {
-        var parts = new List<string>();
-        if (IsKeyDown(NativeMethods.VkControl))
-        {
-            parts.Add("Ctrl");
-        }
-
-        if (IsKeyDown(NativeMethods.VkMenu))
-        {
-            parts.Add("Alt");
-        }
-
-        if (IsKeyDown(NativeMethods.VkShift))
-        {
-            parts.Add("Shift");
-        }
-
-        if (IsKeyDown(NativeMethods.VkLWin) || IsKeyDown(NativeMethods.VkRWin))
-        {
-            parts.Add("Win");
-        }
-
-        parts.Add(keyText);
-        return string.Join("+", parts);
-    }
-
-    private static bool IsKeyDown(int virtualKey) =>
-        (NativeMethods.GetKeyState(virtualKey) & unchecked((short)0x8000)) != 0;
-
-    private static bool IsModifierKey(int virtualKey) =>
-        virtualKey is NativeMethods.VkShift or NativeMethods.VkControl or NativeMethods.VkMenu or NativeMethods.VkLWin or NativeMethods.VkRWin;
-
-    private static string FormatVirtualKey(int virtualKey)
-    {
-        if (virtualKey is >= 'A' and <= 'Z' or >= '0' and <= '9')
-        {
-            return ((char)virtualKey).ToString();
-        }
-
-        if (virtualKey is >= NativeMethods.VkF1 and <= NativeMethods.VkF24)
-        {
-            return $"F{virtualKey - NativeMethods.VkF1 + 1}";
-        }
-
-        if (virtualKey is >= NativeMethods.VkNumpad0 and <= NativeMethods.VkNumpad0 + 9)
-        {
-            return $"NumPad{virtualKey - NativeMethods.VkNumpad0}";
-        }
-
-        return virtualKey switch
-        {
-            NativeMethods.VkBackspace => "Backspace",
-            NativeMethods.VkTab => "Tab",
-            NativeMethods.VkReturn => "Enter",
-            NativeMethods.VkSpace => "Space",
-            NativeMethods.VkLeft => "Left",
-            NativeMethods.VkUp => "Up",
-            NativeMethods.VkRight => "Right",
-            NativeMethods.VkDown => "Down",
-            0x13 => "Pause",
-            0x21 => "PageUp",
-            0x22 => "PageDown",
-            0x23 => "End",
-            0x24 => "Home",
-            0x2D => "Insert",
-            0x2E => "Delete",
-            0x91 => "ScrollLock",
-            _ => string.Empty
-        };
-    }
-
-    private static MonitorPowerMode ParsePowerMode(string text) =>
-        text.Trim() switch
-        {
-            "Suspend" => MonitorPowerMode.Suspend,
-            "PowerOff" => MonitorPowerMode.PowerOff,
-            "SoftOff" => MonitorPowerMode.SoftOff,
-            _ => MonitorPowerMode.Standby
-        };
+    private static string TrimDeviceName(string deviceName) =>
+        deviceName.StartsWith(@"\\.\", StringComparison.Ordinal)
+            ? deviceName[4..]
+            : deviceName;
 
     private static string SerializePowerMode(MonitorPowerMode mode) =>
         mode switch
@@ -1148,195 +744,101 @@ internal sealed class SettingsWindow
             _ => "Standby"
         };
 
-    private static string TrimDeviceName(string deviceName) =>
-        deviceName.StartsWith(@"\\.\", StringComparison.Ordinal)
-            ? deviceName[4..]
-            : deviceName;
-
-    private int Scale(int value) => (int)Math.Round(value * _dpi / 96.0);
-
-    private static nuint ToNuint(IntPtr value) => unchecked((nuint)value.ToInt64());
-
-    private int HitTest(nint lParam)
-    {
-        var x = unchecked((short)((long)lParam & 0xFFFF));
-        var y = unchecked((short)(((long)lParam >> 16) & 0xFFFF));
-        foreach (var (id, rect) in _clickRegions)
+    private static MonitorPowerMode ParsePowerMode(string text) =>
+        text switch
         {
-            if (x >= rect.Left && x < rect.Right && y >= rect.Top && y < rect.Bottom)
-            {
-                return id;
-            }
+            "Suspend" => MonitorPowerMode.Suspend,
+            "PowerOff" => MonitorPowerMode.PowerOff,
+            "SoftOff" => MonitorPowerMode.SoftOff,
+            _ => MonitorPowerMode.Standby
+        };
+
+    private static string FormatChord(KeyEventArgs e)
+    {
+        var key = FormatKey(e.Key);
+        if (key.Length == 0)
+        {
+            return string.Empty;
         }
 
-        return 0;
+        var parts = new List<string>();
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            parts.Add("Ctrl");
+        }
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            parts.Add("Alt");
+        }
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            parts.Add("Shift");
+        }
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Meta))
+        {
+            parts.Add("Win");
+        }
+
+        parts.Add(key);
+        return string.Join("+", parts);
     }
 
-    private void HandleMouseDown(nint lParam)
+    private static string FormatKey(Key key)
     {
-        var commandId = HitTest(lParam);
-        if (commandId == 0)
+        if (key is >= Key.A and <= Key.Z)
         {
-            return;
+            return key.ToString();
         }
 
-        _pressedCommandId = commandId;
-        NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
+        if (key is >= Key.D0 and <= Key.D9)
+        {
+            return ((int)(key - Key.D0)).ToString();
+        }
+
+        if (key is >= Key.F1 and <= Key.F24)
+        {
+            return key.ToString();
+        }
+
+        if (key is >= Key.NumPad0 and <= Key.NumPad9)
+        {
+            return "NumPad" + (int)(key - Key.NumPad0);
+        }
+
+        return key switch
+        {
+            Key.Space => "Space",
+            Key.Tab => "Tab",
+            Key.Return => "Enter",
+            Key.Back => "Backspace",
+            Key.Escape => "Esc",
+            Key.Pause => "Pause",
+            Key.Insert => "Insert",
+            Key.Delete => "Delete",
+            Key.Home => "Home",
+            Key.End => "End",
+            Key.PageUp => "PageUp",
+            Key.PageDown => "PageDown",
+            Key.Left => "Left",
+            Key.Up => "Up",
+            Key.Right => "Right",
+            Key.Down => "Down",
+            _ => string.Empty
+        };
     }
 
-    private void HandleMouseUp(nint lParam)
-    {
-        var pressedCommandId = _pressedCommandId;
-        _pressedCommandId = 0;
-        if (pressedCommandId != 0)
-        {
-            NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
-        }
+    private static bool IsModifierKey(Key key) =>
+        key is Key.LeftCtrl or Key.RightCtrl
+            or Key.LeftShift or Key.RightShift
+            or Key.LeftAlt or Key.RightAlt
+            or Key.LWin or Key.RWin;
 
-        if (pressedCommandId != 0 && pressedCommandId == HitTest(lParam))
-        {
-            HandleCommand(pressedCommandId);
-        }
-    }
+    private void SetStatus(string text) => _statusText.Text = text;
 
-    private nint HandleWindowMessage(IntPtr hwnd, uint msg, nuint wParam, nint lParam)
-    {
-        switch (msg)
-        {
-            case NativeMethods.WmPaint:
-                PaintWindow();
-                return 0;
-
-            case NativeMethods.WmDrawItem:
-                DrawOwnerButton(lParam);
-                return 1;
-
-            case NativeMethods.WmEraseBkgnd:
-                return 1;
-
-            case NativeMethods.WmCtlColorEdit:
-                var editHdc = unchecked((IntPtr)(nint)wParam);
-                NativeMethods.SetTextColor(editHdc, ColorRef(15, 23, 42));
-                NativeMethods.SetBkColor(editHdc, ColorRef(255, 255, 255));
-                return NativeMethods.GetStockObject(NativeMethods.WhiteBrush);
-
-            case NativeMethods.WmCtlColorStatic:
-                var staticHdc = unchecked((IntPtr)(nint)wParam);
-                NativeMethods.SetBkMode(staticHdc, NativeMethods.Transparent);
-                NativeMethods.SetTextColor(staticHdc, ColorRef(15, 23, 42));
-                return NativeMethods.GetStockObject(NativeMethods.NullBrush);
-
-            case NativeMethods.WmLButtonDown:
-                HandleMouseDown(lParam);
-                return 0;
-
-            case NativeMethods.WmLButtonUp:
-                HandleMouseUp(lParam);
-                return 0;
-
-            case NativeMethods.WmCommand:
-                HandleCommand((int)(wParam & 0xFFFF));
-                return 0;
-
-            case NativeMethods.WmKeyDown:
-            case NativeMethods.WmSysKeyDown:
-                if (_captureTarget != CaptureTarget.None)
-                {
-                    CaptureKey((int)wParam);
-                    return 0;
-                }
-
-                if ((int)wParam == NativeMethods.VkEscape)
-                {
-                    NativeMethods.DestroyWindow(hwnd);
-                    return 0;
-                }
-
-                return NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
-
-            case NativeMethods.WmClose:
-                NativeMethods.DestroyWindow(hwnd);
-                return 0;
-
-            case NativeMethods.WmDestroy:
-                EndCapture(resumeHotkeys: true);
-                if (_font != IntPtr.Zero)
-                {
-                    NativeMethods.DeleteObject(_font);
-                    _font = IntPtr.Zero;
-                }
-
-                if (_titleFont != IntPtr.Zero)
-                {
-                    NativeMethods.DeleteObject(_titleFont);
-                    _titleFont = IntPtr.Zero;
-                }
-
-                if (_sectionFont != IntPtr.Zero)
-                {
-                    NativeMethods.DeleteObject(_sectionFont);
-                    _sectionFont = IntPtr.Zero;
-                }
-
-                if (_smallFont != IntPtr.Zero)
-                {
-                    NativeMethods.DeleteObject(_smallFont);
-                    _smallFont = IntPtr.Zero;
-                }
-
-                _hwnd = IntPtr.Zero;
-                _current = null;
-                _onClosed();
-                return 0;
-
-            default:
-                return NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
-        }
-    }
-
-    private void HandleCommand(int commandId)
-    {
-        switch (commandId)
-        {
-            case IdCaptureGlobal:
-                StartCapture(CaptureTarget.Global);
-                break;
-            case IdCapturePrimary:
-                StartCapture(CaptureTarget.Primary);
-                break;
-            case IdCaptureSecondary:
-                StartCapture(CaptureTarget.Secondary);
-                break;
-            case IdTestPrimary:
-                TestTemporaryStandby(primary: true);
-                break;
-            case IdTestSecondary:
-                TestTemporaryStandby(primary: false);
-                break;
-            case IdTurnAllOff:
-                TurnAllMonitorsOff();
-                break;
-            case IdChoosePrimaryTarget:
-                ShowTargetMenu(primary: true);
-                break;
-            case IdChooseSecondaryTarget:
-                ShowTargetMenu(primary: false);
-                break;
-            case IdChoosePowerMode:
-                ShowPowerModeMenu();
-                break;
-            case IdSave:
-                TrySave();
-                break;
-            case IdCancel:
-                NativeMethods.DestroyWindow(_hwnd);
-                break;
-        }
-    }
-
-    private static nint WndProc(IntPtr hwnd, uint msg, nuint wParam, nint lParam) =>
-        _current?.HandleWindowMessage(hwnd, msg, wParam, lParam)
-        ?? NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
+    private static SolidColorBrush Brush(byte r, byte g, byte b) => new(Color.FromRgb(r, g, b));
 
     private enum CaptureTarget
     {
@@ -1344,14 +846,5 @@ internal sealed class SettingsWindow
         Global,
         Primary,
         Secondary
-    }
-
-    private enum ButtonKind
-    {
-        Secondary,
-        Primary,
-        Danger,
-        Hotkey,
-        Selector
     }
 }

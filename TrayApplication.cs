@@ -14,6 +14,7 @@ internal sealed unsafe class TrayApplication
     private const int MenuHelp = 2801;
     private const int MenuReload = 3000;
     private const int MenuExit = 3001;
+    private const uint WmRunQueuedAction = NativeMethods.WmApp + 2;
     private const uint TemporaryStandbyTimerIntervalMs = 500;
     private const int TemporaryStandbyInputGraceMs = 1200;
     private static readonly nuint TemporaryStandbyTimerId = 1;
@@ -21,6 +22,7 @@ internal sealed unsafe class TrayApplication
     private static readonly NativeMethods.WndProc WindowProc = WndProc;
     private static TrayApplication? _current;
 
+    private readonly Queue<Action> _queuedActions = new();
     private readonly Dictionary<int, HotkeyBinding> _registeredHotkeys = new();
     private readonly Dictionary<string, bool> _targetSleepState = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _className = "DisplayLullabyTrayWindow";
@@ -61,6 +63,7 @@ internal sealed unsafe class TrayApplication
         StopTemporaryStandbyTimer();
         _settingsWindow?.Close();
         _helpPopup?.Destroy();
+        AvaloniaUiHost.Shutdown();
         DeleteTrayIcon();
         _current = null;
         return 0;
@@ -323,11 +326,11 @@ internal sealed unsafe class TrayApplication
             _settingsWindow = new SettingsWindow(
                 _hwnd,
                 _config.ToSettings(),
-                () => ReloadConfiguration(showBalloon: false),
-                Execute,
-                UnregisterConfiguredHotkeys,
-                () => RegisterConfiguredHotkeys(showWarnings: false),
-                () => _settingsWindow = null);
+                () => PostToMessageLoop(() => ReloadConfiguration(showBalloon: false)),
+                (action, target) => PostToMessageLoop(() => Execute(action, target)),
+                () => PostToMessageLoop(UnregisterConfiguredHotkeys),
+                () => PostToMessageLoop(() => RegisterConfiguredHotkeys(showWarnings: false)),
+                () => PostToMessageLoop(() => _settingsWindow = null));
             _settingsWindow.Show();
         }
         catch (Exception ex)
@@ -500,6 +503,45 @@ internal sealed unsafe class TrayApplication
         }
     }
 
+    private void PostToMessageLoop(Action action)
+    {
+        lock (_queuedActions)
+        {
+            _queuedActions.Enqueue(action);
+        }
+
+        if (_hwnd != IntPtr.Zero)
+        {
+            NativeMethods.PostMessage(_hwnd, WmRunQueuedAction, 0, 0);
+        }
+    }
+
+    private void DrainQueuedActions()
+    {
+        while (true)
+        {
+            Action? action;
+            lock (_queuedActions)
+            {
+                action = _queuedActions.Count > 0 ? _queuedActions.Dequeue() : null;
+            }
+
+            if (action is null)
+            {
+                return;
+            }
+
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                ShowBalloon("DisplayLullaby", ex.Message);
+            }
+        }
+    }
+
     private void StartTemporaryStandbyTimer()
     {
         StopTemporaryStandbyTimer();
@@ -665,6 +707,10 @@ internal sealed unsafe class TrayApplication
                     Execute(hotkey.Action, hotkey.Target);
                 }
 
+                return 0;
+
+            case WmRunQueuedAction:
+                DrainQueuedActions();
                 return 0;
 
             case NativeMethods.WmDisplayChange:
