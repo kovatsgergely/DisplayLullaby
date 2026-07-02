@@ -18,8 +18,8 @@ internal sealed class SettingsWindow
     private const int IdChooseSecondaryTarget = 1302;
     private const int IdChoosePowerMode = 1303;
     private const int SelectorMenuBase = 40000;
-    private const int ClientWidth = 520;
-    private const int ClientHeight = 446;
+    private const int ClientWidth = 420;
+    private const int ClientHeight = 374;
 
     private static readonly NativeMethods.WndProc WindowProc = WndProc;
     private static SettingsWindow? _current;
@@ -39,15 +39,11 @@ internal sealed class SettingsWindow
     private IntPtr _titleFont;
     private IntPtr _sectionFont;
     private IntPtr _smallFont;
-    private IntPtr _globalHotkeyButton;
-    private IntPtr _primaryHotkeyButton;
-    private IntPtr _secondaryHotkeyButton;
-    private IntPtr _primaryTargetButton;
-    private IntPtr _secondaryTargetButton;
-    private IntPtr _powerModeButton;
     private IntPtr _idleMinutesEdit;
     private IntPtr _wakeDelayEdit;
-    private IntPtr _statusLabel;
+    private readonly Dictionary<int, NativeMethods.Rect> _clickRegions = new();
+    private string _statusText = "Ready.";
+    private int _pressedCommandId;
     private CaptureTarget _captureTarget;
 
     public SettingsWindow(
@@ -261,41 +257,22 @@ internal sealed class SettingsWindow
 
     private void CreateControls()
     {
-        CreateLabel("Command", 38, 102, 130, 18, _smallFont);
-        CreateLabel("Hotkey", 216, 102, 76, 18, _smallFont);
-        CreateLabel("Target", 318, 102, 100, 18, _smallFont);
+        _clickRegions.Clear();
+        AddClickRegion(IdCaptureGlobal, 166, 109, 62, 22);
+        AddClickRegion(IdCapturePrimary, 166, 134, 62, 22);
+        AddClickRegion(IdCaptureSecondary, 166, 159, 62, 22);
+        AddClickRegion(IdChoosePrimaryTarget, 250, 134, 140, 22);
+        AddClickRegion(IdChooseSecondaryTarget, 250, 159, 140, 22);
+        AddClickRegion(IdChoosePowerMode, 104, 222, 84, 22);
 
-        CreateLabel("All monitors off", 38, 128, 150, 22);
-        _globalHotkeyButton = CreateButton(_settings.GlobalOffHotkey, IdCaptureGlobal, 216, 124, 74, 26);
+        _idleMinutesEdit = CreateEdit(_settings.TemporaryStandbyIdleMinutes.ToString(), 244, 225, 24, 16, numbersOnly: true);
+        _wakeDelayEdit = CreateEdit(_settings.TemporaryStandbyWakeDelaySeconds.ToString(), 358, 225, 18, 16, numbersOnly: true);
 
-        CreateLabel("Primary standby", 38, 159, 150, 22);
-        _primaryHotkeyButton = CreateButton(_settings.PrimaryStandbyHotkey, IdCapturePrimary, 216, 155, 74, 26);
-        _primaryTargetButton = CreateButton(_settings.PrimaryStandbyTarget, IdChoosePrimaryTarget, 318, 155, 154, 26);
-
-        CreateLabel("Secondary standby", 38, 190, 150, 22);
-        _secondaryHotkeyButton = CreateButton(_settings.SecondaryStandbyHotkey, IdCaptureSecondary, 216, 186, 74, 26);
-        _secondaryTargetButton = CreateButton(_settings.SecondaryStandbyTarget, IdChooseSecondaryTarget, 318, 186, 154, 26);
-
-        CreateLabel("DDC mode", 38, 250, 72, 22);
-        _powerModeButton = CreateButton(SerializePowerMode(_settings.PowerMode), IdChoosePowerMode, 112, 246, 96, 26);
-
-        CreateLabel("Idle", 226, 250, 32, 22);
-        _idleMinutesEdit = CreateEdit(_settings.TemporaryStandbyIdleMinutes.ToString(), 268, 249, 28, 18, numbersOnly: true);
-        CreateLabel("min", 304, 250, 28, 20, _smallFont);
-
-        CreateLabel("Wake", 354, 250, 42, 22);
-        _wakeDelayEdit = CreateEdit(_settings.TemporaryStandbyWakeDelaySeconds.ToString(), 402, 249, 24, 18, numbersOnly: true);
-        CreateLabel("sec", 434, 250, 26, 20, _smallFont);
-
-        CreateLabel(BuildDisplaySummary(), 38, 324, 440, 34, _smallFont);
-
-        _statusLabel = CreateLabel("Ready.", 18, 366, 290, 18, _smallFont);
-
-        CreateButton("Test primary", IdTestPrimary, 18, 400, 86, 28);
-        CreateButton("Test secondary", IdTestSecondary, 112, 400, 100, 28);
-        CreateButton("All off", IdTurnAllOff, 220, 400, 62, 28);
-        CreateButton("Save", IdSave, 360, 400, 62, 28, defaultButton: true);
-        CreateButton("Cancel", IdCancel, 430, 400, 70, 28);
+        AddClickRegion(IdTestPrimary, 14, 340, 76, 24);
+        AddClickRegion(IdTestSecondary, 98, 340, 88, 24);
+        AddClickRegion(IdTurnAllOff, 194, 340, 56, 24);
+        AddClickRegion(IdSave, 292, 340, 52, 24);
+        AddClickRegion(IdCancel, 352, 340, 54, 24);
     }
 
     private void PaintWindow()
@@ -316,23 +293,54 @@ internal sealed class SettingsWindow
         NativeMethods.GetClientRect(_hwnd, out var clientRect);
         FillRect(hdc, clientRect, ColorRef(246, 248, 252));
 
-        var headerRect = ScaleRect(0, 0, 520, 60);
+        var headerRect = ScaleRect(0, 0, 420, 48);
         FillRect(hdc, headerRect, ColorRef(238, 245, 253));
 
-        DrawRoundRect(hdc, 18, 13, 34, 34, 8, ColorRef(37, 99, 235), ColorRef(30, 64, 175));
-        DrawMonitorGlyph(hdc, 26, 22, 0.72);
+        DrawRoundRect(hdc, 14, 8, 32, 32, 8, ColorRef(37, 99, 235), ColorRef(30, 64, 175));
+        DrawMonitorGlyph(hdc, 22, 17, 0.66);
 
-        DrawTextLine(hdc, "DisplayLullaby settings", 64, 11, 330, 24, _titleFont, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "Hotkeys, standby handoff, and display targets", 65, 34, 330, 18, _smallFont, ColorRef(71, 94, 131));
+        DrawTextLine(hdc, "DisplayLullaby settings", 56, 7, 292, 22, _titleFont, ColorRef(15, 23, 42));
+        DrawTextLine(hdc, "Hotkeys, standby handoff, and display targets", 57, 28, 292, 16, _smallFont, ColorRef(71, 94, 131));
 
-        DrawCard(hdc, 16, 72, 488, 148, "Hotkeys");
-        DrawCard(hdc, 16, 232, 488, 54, "Standby behavior");
-        DrawInputFrame(hdc, 260, 246, 44, 26);
-        DrawInputFrame(hdc, 394, 246, 40, 26);
-        DrawCard(hdc, 16, 298, 488, 64, "Detected displays");
+        DrawCard(hdc, 12, 58, 396, 124, "Hotkeys");
+        DrawTextLine(hdc, "Command", 28, 86, 118, 16, _smallFont, ColorRef(15, 23, 42));
+        DrawTextLine(hdc, "Hotkey", 166, 86, 62, 16, _smallFont, ColorRef(15, 23, 42));
+        DrawTextLine(hdc, "Target", 250, 86, 100, 16, _smallFont, ColorRef(15, 23, 42));
+        DrawTextLine(hdc, "All monitors off", 28, 111, 128, 18, _font, ColorRef(15, 23, 42));
+        DrawTextLine(hdc, "Primary standby", 28, 136, 128, 18, _font, ColorRef(15, 23, 42));
+        DrawTextLine(hdc, "Secondary standby", 28, 161, 128, 18, _font, ColorRef(15, 23, 42));
+        DrawButton(hdc, IdCaptureGlobal, HotkeyText(CaptureTarget.Global), ButtonKind.Hotkey);
+        DrawButton(hdc, IdCapturePrimary, HotkeyText(CaptureTarget.Primary), ButtonKind.Hotkey);
+        DrawButton(hdc, IdCaptureSecondary, HotkeyText(CaptureTarget.Secondary), ButtonKind.Hotkey);
+        DrawButton(hdc, IdChoosePrimaryTarget, _settings.PrimaryStandbyTarget, ButtonKind.Selector);
+        DrawButton(hdc, IdChooseSecondaryTarget, _settings.SecondaryStandbyTarget, ButtonKind.Selector);
 
-        var footerLine = ScaleRect(16, 388, 488, 1);
+        DrawCard(hdc, 12, 190, 396, 60, "Standby behavior");
+        DrawTextLine(hdc, "DDC mode", 28, 222, 66, 18, _font, ColorRef(15, 23, 42));
+        DrawButton(hdc, IdChoosePowerMode, SerializePowerMode(_settings.PowerMode), ButtonKind.Selector);
+        DrawTextLine(hdc, "Idle", 198, 222, 32, 18, _font, ColorRef(15, 23, 42));
+        DrawInputFrame(hdc, 238, 222, 36, 22);
+        DrawTextLine(hdc, "min", 280, 223, 24, 17, _smallFont, ColorRef(15, 23, 42));
+        DrawTextLine(hdc, "Wake", 306, 222, 38, 18, _font, ColorRef(15, 23, 42));
+        DrawInputFrame(hdc, 352, 222, 32, 22);
+        DrawTextLine(hdc, "sec", 390, 223, 22, 17, _smallFont, ColorRef(15, 23, 42));
+
+        DrawCard(hdc, 12, 258, 396, 60, "Detected displays");
+        DrawDisplaySummary(hdc, 28, 288);
+
+        DrawTextLine(hdc, _statusText, 14, 320, 278, 17, _smallFont, ColorRef(64, 92, 133));
+        var footerLine = ScaleRect(12, 334, 396, 1);
         FillRect(hdc, footerLine, ColorRef(225, 232, 242));
+        DrawButton(hdc, IdTestPrimary, "Test primary", ButtonKind.Secondary);
+        DrawButton(hdc, IdTestSecondary, "Test secondary", ButtonKind.Secondary);
+        DrawButton(hdc, IdTurnAllOff, "All off", ButtonKind.Danger);
+        DrawButton(hdc, IdSave, "Save", ButtonKind.Primary);
+        DrawButton(hdc, IdCancel, "Cancel", ButtonKind.Secondary);
+    }
+
+    private void AddClickRegion(int id, int x, int y, int width, int height)
+    {
+        _clickRegions[id] = ScaleRect(x, y, width, height);
     }
 
     private void DrawInputFrame(IntPtr hdc, int x, int y, int width, int height)
@@ -344,6 +352,79 @@ internal sealed class SettingsWindow
     {
         DrawRoundRect(hdc, x, y, width, height, 10, ColorRef(255, 255, 255), ColorRef(218, 228, 240));
         DrawTextLine(hdc, title, x + 18, y + 10, width - 36, 18, _sectionFont, ColorRef(32, 55, 83));
+    }
+
+    private void DrawDisplaySummary(IntPtr hdc, int x, int y)
+    {
+        var lines = BuildDisplaySummary().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < Math.Min(lines.Length, 2); i++)
+        {
+            DrawTextLine(hdc, lines[i], x, y + (i * 15), 360, 14, _smallFont, ColorRef(15, 23, 42));
+        }
+    }
+
+    private string HotkeyText(CaptureTarget target)
+    {
+        if (_captureTarget == target)
+        {
+            return "Press key";
+        }
+
+        return target switch
+        {
+            CaptureTarget.Global => _settings.GlobalOffHotkey,
+            CaptureTarget.Primary => _settings.PrimaryStandbyHotkey,
+            CaptureTarget.Secondary => _settings.SecondaryStandbyHotkey,
+            _ => string.Empty
+        };
+    }
+
+    private void DrawButton(IntPtr hdc, int id, string text, ButtonKind kind)
+    {
+        if (!_clickRegions.TryGetValue(id, out var rect))
+        {
+            return;
+        }
+
+        var pressed = _pressedCommandId == id;
+        var fill = kind switch
+        {
+            ButtonKind.Primary => pressed ? ColorRef(29, 78, 216) : ColorRef(37, 99, 235),
+            ButtonKind.Danger => pressed ? ColorRef(254, 243, 199) : ColorRef(255, 251, 235),
+            ButtonKind.Hotkey => pressed ? ColorRef(236, 244, 255) : ColorRef(248, 251, 255),
+            _ => pressed ? ColorRef(248, 250, 252) : ColorRef(255, 255, 255)
+        };
+        var border = kind switch
+        {
+            ButtonKind.Primary => ColorRef(29, 78, 216),
+            ButtonKind.Danger => ColorRef(245, 158, 11),
+            ButtonKind.Hotkey => ColorRef(168, 198, 235),
+            _ => ColorRef(176, 190, 210)
+        };
+        var textColor = kind switch
+        {
+            ButtonKind.Primary => ColorRef(255, 255, 255),
+            ButtonKind.Danger => ColorRef(120, 53, 15),
+            ButtonKind.Hotkey => ColorRef(29, 78, 216),
+            _ => ColorRef(15, 23, 42)
+        };
+
+        DrawRoundRectRaw(hdc, rect, Scale(kind == ButtonKind.Primary ? 7 : 6), fill, border);
+        var textRect = rect;
+        if (pressed)
+        {
+            textRect.Left += Scale(1);
+            textRect.Top += Scale(1);
+        }
+
+        if (kind == ButtonKind.Selector)
+        {
+            DrawTextLineRaw(hdc, text, textRect, _font, textColor);
+            DrawSelectorChevron(hdc, rect);
+            return;
+        }
+
+        DrawCenteredText(hdc, text, textRect, _font, textColor);
     }
 
     private void DrawMonitorGlyph(IntPtr hdc, int x, int y)
@@ -683,8 +764,6 @@ internal sealed class SettingsWindow
         _captureTarget = target;
         _onCaptureStarted();
 
-        var button = GetCaptureButton(target);
-        NativeMethods.SetWindowText(button, "Press a key...");
         SetStatus(target switch
         {
             CaptureTarget.Global => "Press a key for all monitors off.",
@@ -693,6 +772,7 @@ internal sealed class SettingsWindow
             _ => "Press a key."
         });
 
+        NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
         NativeMethods.SetFocus(_hwnd);
     }
 
@@ -703,10 +783,8 @@ internal sealed class SettingsWindow
             return;
         }
 
-        NativeMethods.SetWindowText(_globalHotkeyButton, _settings.GlobalOffHotkey);
-        NativeMethods.SetWindowText(_primaryHotkeyButton, _settings.PrimaryStandbyHotkey);
-        NativeMethods.SetWindowText(_secondaryHotkeyButton, _settings.SecondaryStandbyHotkey);
         _captureTarget = CaptureTarget.None;
+        NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
 
         if (resumeHotkeys)
         {
@@ -801,9 +879,9 @@ internal sealed class SettingsWindow
 
         settings = _settings with
         {
-            PrimaryStandbyTarget = ReadText(_primaryTargetButton).Trim(),
-            SecondaryStandbyTarget = ReadText(_secondaryTargetButton).Trim(),
-            PowerMode = ParsePowerMode(ReadText(_powerModeButton)),
+            PrimaryStandbyTarget = _settings.PrimaryStandbyTarget,
+            SecondaryStandbyTarget = _settings.SecondaryStandbyTarget,
+            PowerMode = _settings.PowerMode,
             TemporaryStandbyIdleMinutes = idleMinutes,
             TemporaryStandbyWakeDelaySeconds = wakeDelaySeconds
         };
@@ -814,7 +892,7 @@ internal sealed class SettingsWindow
     private void TestTemporaryStandby(bool primary)
     {
         EndCapture(resumeHotkeys: true);
-        var target = ReadText(primary ? _primaryTargetButton : _secondaryTargetButton).Trim();
+        var target = (primary ? _settings.PrimaryStandbyTarget : _settings.SecondaryStandbyTarget).Trim();
         if (target.Length == 0)
         {
             target = primary ? "primary" : "secondary";
@@ -834,15 +912,13 @@ internal sealed class SettingsWindow
     private void ShowTargetMenu(bool primary)
     {
         EndCapture(resumeHotkeys: true);
-        var button = primary ? _primaryTargetButton : _secondaryTargetButton;
-        var current = ReadText(button).Trim();
-        var selected = ShowSelectorMenu(button, BuildTargetOptions(current), current, SelectorMenuBase);
+        var current = (primary ? _settings.PrimaryStandbyTarget : _settings.SecondaryStandbyTarget).Trim();
+        var selected = ShowSelectorMenu(BuildTargetOptions(current), current, SelectorMenuBase);
         if (selected.Length == 0)
         {
             return;
         }
 
-        NativeMethods.SetWindowText(button, selected);
         _settings = primary
             ? _settings with { PrimaryStandbyTarget = selected }
             : _settings with { SecondaryStandbyTarget = selected };
@@ -852,9 +928,8 @@ internal sealed class SettingsWindow
     private void ShowPowerModeMenu()
     {
         EndCapture(resumeHotkeys: true);
-        var current = ReadText(_powerModeButton).Trim();
+        var current = SerializePowerMode(_settings.PowerMode);
         var selected = ShowSelectorMenu(
-            _powerModeButton,
             ["Standby", "Suspend", "PowerOff", "SoftOff"],
             current,
             SelectorMenuBase + 100);
@@ -863,14 +938,13 @@ internal sealed class SettingsWindow
             return;
         }
 
-        NativeMethods.SetWindowText(_powerModeButton, selected);
         _settings = _settings with { PowerMode = ParsePowerMode(selected) };
         SetStatus("DDC mode updated.");
     }
 
-    private string ShowSelectorMenu(IntPtr button, string[] options, string current, int idBase)
+    private string ShowSelectorMenu(string[] options, string current, int idBase)
     {
-        if (options.Length == 0 || !NativeMethods.GetWindowRect(button, out var rect))
+        if (options.Length == 0)
         {
             return string.Empty;
         }
@@ -894,12 +968,17 @@ internal sealed class SettingsWindow
                 NativeMethods.AppendMenu(menu, flags, (nuint)(idBase + i), options[i]);
             }
 
+            if (!NativeMethods.GetCursorPos(out var point))
+            {
+                point = new NativeMethods.Point();
+            }
+
             NativeMethods.SetForegroundWindow(_hwnd);
             var command = NativeMethods.TrackPopupMenu(
                 menu,
                 NativeMethods.TpmReturNCmd | NativeMethods.TpmRightButton,
-                rect.Left,
-                rect.Bottom,
+                point.X,
+                point.Y,
                 0,
                 _hwnd,
                 IntPtr.Zero);
@@ -965,22 +1044,10 @@ internal sealed class SettingsWindow
         }
     }
 
-    private IntPtr GetCaptureButton(CaptureTarget target) =>
-        target switch
-        {
-            CaptureTarget.Global => _globalHotkeyButton,
-            CaptureTarget.Primary => _primaryHotkeyButton,
-            CaptureTarget.Secondary => _secondaryHotkeyButton,
-            _ => IntPtr.Zero
-        };
-
     private void SetStatus(string text)
     {
-        if (_statusLabel != IntPtr.Zero)
-        {
-            NativeMethods.SetWindowText(_statusLabel, text);
-            NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
-        }
+        _statusText = text;
+        NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
     }
 
     private string ReadText(IntPtr handle)
@@ -1090,6 +1157,48 @@ internal sealed class SettingsWindow
 
     private static nuint ToNuint(IntPtr value) => unchecked((nuint)value.ToInt64());
 
+    private int HitTest(nint lParam)
+    {
+        var x = unchecked((short)((long)lParam & 0xFFFF));
+        var y = unchecked((short)(((long)lParam >> 16) & 0xFFFF));
+        foreach (var (id, rect) in _clickRegions)
+        {
+            if (x >= rect.Left && x < rect.Right && y >= rect.Top && y < rect.Bottom)
+            {
+                return id;
+            }
+        }
+
+        return 0;
+    }
+
+    private void HandleMouseDown(nint lParam)
+    {
+        var commandId = HitTest(lParam);
+        if (commandId == 0)
+        {
+            return;
+        }
+
+        _pressedCommandId = commandId;
+        NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
+    }
+
+    private void HandleMouseUp(nint lParam)
+    {
+        var pressedCommandId = _pressedCommandId;
+        _pressedCommandId = 0;
+        if (pressedCommandId != 0)
+        {
+            NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, false);
+        }
+
+        if (pressedCommandId != 0 && pressedCommandId == HitTest(lParam))
+        {
+            HandleCommand(pressedCommandId);
+        }
+    }
+
     private nint HandleWindowMessage(IntPtr hwnd, uint msg, nuint wParam, nint lParam)
     {
         switch (msg)
@@ -1114,10 +1223,16 @@ internal sealed class SettingsWindow
             case NativeMethods.WmCtlColorStatic:
                 var staticHdc = unchecked((IntPtr)(nint)wParam);
                 NativeMethods.SetBkMode(staticHdc, NativeMethods.Transparent);
-                NativeMethods.SetTextColor(
-                    staticHdc,
-                    lParam == _statusLabel ? ColorRef(64, 92, 133) : ColorRef(15, 23, 42));
+                NativeMethods.SetTextColor(staticHdc, ColorRef(15, 23, 42));
                 return NativeMethods.GetStockObject(NativeMethods.NullBrush);
+
+            case NativeMethods.WmLButtonDown:
+                HandleMouseDown(lParam);
+                return 0;
+
+            case NativeMethods.WmLButtonUp:
+                HandleMouseUp(lParam);
+                return 0;
 
             case NativeMethods.WmCommand:
                 HandleCommand((int)(wParam & 0xFFFF));
@@ -1229,5 +1344,14 @@ internal sealed class SettingsWindow
         Global,
         Primary,
         Secondary
+    }
+
+    private enum ButtonKind
+    {
+        Secondary,
+        Primary,
+        Danger,
+        Hotkey,
+        Selector
     }
 }

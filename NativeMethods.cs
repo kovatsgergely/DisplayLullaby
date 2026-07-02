@@ -337,8 +337,8 @@ internal static unsafe partial class NativeMethods
     [DllImport("user32.dll", EntryPoint = "RegisterClassExW", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern ushort RegisterClassEx(ref WndClassEx lpwcx);
 
-    [DllImport("user32.dll", EntryPoint = "CreateWindowExW", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern IntPtr CreateWindowEx(
+    [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial IntPtr CreateWindowExRaw(
         uint dwExStyle,
         string lpClassName,
         string lpWindowName,
@@ -352,15 +352,42 @@ internal static unsafe partial class NativeMethods
         IntPtr hInstance,
         IntPtr lpParam);
 
-    [DllImport("user32.dll", EntryPoint = "GetWindowTextLengthW", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static IntPtr CreateWindowEx(
+        uint dwExStyle,
+        string lpClassName,
+        string lpWindowName,
+        uint dwStyle,
+        int x,
+        int y,
+        int nWidth,
+        int nHeight,
+        IntPtr hWndParent,
+        IntPtr hMenu,
+        IntPtr hInstance,
+        IntPtr lpParam)
+        => CreateWindowExRaw(
+            dwExStyle,
+            lpClassName,
+            lpWindowName,
+            dwStyle,
+            x,
+            y,
+            nWidth,
+            nHeight,
+            hWndParent,
+            hMenu,
+            hInstance,
+            lpParam);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowTextLengthW", ExactSpelling = true, SetLastError = true)]
     public static extern int GetWindowTextLength(IntPtr hWnd);
 
-    [DllImport("user32.dll", EntryPoint = "GetWindowTextW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "GetWindowTextW", ExactSpelling = true, SetLastError = true)]
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
-    [DllImport("user32.dll", EntryPoint = "SetWindowTextW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowTextW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetWindowText(IntPtr hWnd, string lpString);
+    public static partial bool SetWindowText(IntPtr hWnd, string lpString);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -369,7 +396,7 @@ internal static unsafe partial class NativeMethods
     [DllImport("user32.dll")]
     public static extern void PostQuitMessage(int nExitCode);
 
-    [DllImport("user32.dll", SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "DefWindowProcW", ExactSpelling = true, SetLastError = true)]
     public static extern nint DefWindowProc(IntPtr hWnd, uint msg, nuint wParam, nint lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -383,11 +410,14 @@ internal static unsafe partial class NativeMethods
     [DllImport("user32.dll")]
     public static extern nint DispatchMessage(ref Msg lpMsg);
 
-    [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "SendMessageW", ExactSpelling = true, SetLastError = true)]
     public static extern nint SendMessage(IntPtr hWnd, uint msg, nuint wParam, nint lParam);
 
-    [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern nint SendMessageText(IntPtr hWnd, uint msg, nuint wParam, string lParam);
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint SendMessageTextRaw(IntPtr hWnd, uint msg, nuint wParam, string lParam);
+
+    public static nint SendMessageText(IntPtr hWnd, uint msg, nuint wParam, string text)
+        => SendMessageTextRaw(hWnd, msg, wParam, text);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -427,9 +457,12 @@ internal static unsafe partial class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr CreatePopupMenu();
 
-    [DllImport("user32.dll", EntryPoint = "AppendMenuW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [LibraryImport("user32.dll", EntryPoint = "AppendMenuW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool AppendMenu(IntPtr hMenu, uint uFlags, nuint uIDNewItem, string? lpNewItem);
+    private static partial bool AppendMenuRaw(IntPtr hMenu, uint uFlags, nuint uIDNewItem, string? lpNewItem);
+
+    public static bool AppendMenu(IntPtr hMenu, uint uFlags, nuint uIDNewItem, string? text)
+        => AppendMenuRaw(hMenu, uFlags, uIDNewItem, text);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -619,4 +652,5 @@ internal static unsafe partial class NativeMethods
         var error = Marshal.GetLastWin32Error();
         return error == 0 ? "unknown error" : $"Win32 error {error}";
     }
+
 }
