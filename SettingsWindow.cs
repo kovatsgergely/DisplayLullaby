@@ -80,6 +80,10 @@ internal sealed class SettingsWindow
 
 internal sealed class AvaloniaSettingsWindow : Window
 {
+    private const string DdcModeTooltip = "DDC/CI command, monitor support varies.";
+    private const string IdleTooltip = "No keyboard or mouse input for this long after temporary standby.";
+    private const string WakeDelayTooltip = "Wait this long after waking the monitor, then send Windows global standby.";
+
     private readonly Action _onSaved;
     private readonly Action<TrayAction, string> _executeCommand;
     private readonly Action _onCaptureStarted;
@@ -321,10 +325,10 @@ internal sealed class AvaloniaSettingsWindow : Window
             }
         };
 
-        AddCell(grid, Label("DDC mode"), 0, 0);
-        AddCell(grid, _powerModeCombo, 0, 1);
-        AddCell(grid, Label("Idle"), 1, 0);
-        AddCell(grid, ValueWithUnit(_idleMinutesTextBox, "min"), 1, 1);
+        AddCell(grid, Label("DDC mode", DdcModeTooltip), 0, 0);
+        AddCell(grid, WithTooltip(_powerModeCombo, DdcModeTooltip), 0, 1);
+        AddCell(grid, Label("Idle", IdleTooltip), 1, 0);
+        AddCell(grid, ValueWithUnit(WithTooltip(_idleMinutesTextBox, IdleTooltip), "min"), 1, 1);
         AddCell(grid, WakeDelayGroup(), 1, 3);
 
         return Card("Standby behavior", grid);
@@ -436,6 +440,26 @@ internal sealed class AvaloniaSettingsWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         };
 
+    private static TextBlock Label(string text, string tooltip)
+    {
+        var label = Label(text);
+        return WithTooltip(label, tooltip);
+    }
+
+    private static T WithTooltip<T>(T control, string tooltip)
+        where T : Control
+    {
+        ToolTip.SetTip(control, new TextBlock
+        {
+            Text = tooltip,
+            FontSize = 12,
+            MaxWidth = 280,
+            TextWrapping = TextWrapping.Wrap
+        });
+        ToolTip.SetPlacement(control, PlacementMode.Right);
+        return control;
+    }
+
     private static TextBlock Unit(string text) =>
         new()
         {
@@ -453,8 +477,8 @@ internal sealed class AvaloniaSettingsWindow : Window
             Spacing = 8,
             VerticalAlignment = VerticalAlignment.Center
         };
-        panel.Children.Add(Label("Wake"));
-        panel.Children.Add(_wakeDelayTextBox);
+        panel.Children.Add(Label("Wake", WakeDelayTooltip));
+        panel.Children.Add(WithTooltip(_wakeDelayTextBox, WakeDelayTooltip));
         panel.Children.Add(Unit("sec"));
         return panel;
     }
