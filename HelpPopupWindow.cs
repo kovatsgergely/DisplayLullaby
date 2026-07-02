@@ -18,7 +18,7 @@ internal sealed record HelpPopupContent(IReadOnlyList<HelpDisplayRow> Displays, 
 internal sealed class HelpPopupWindow
 {
     private const int DesignDpi = 96;
-    private const int MinWidthDips = 390;
+    private const int MinWidthDips = 350;
     private const int MaxWidthDips = 640;
     private AvaloniaHelpPopupWindow? _window;
     private int _isVisible;
@@ -110,11 +110,11 @@ internal sealed class HelpPopupWindow
     {
         var displayRows = Math.Max(1, content.Displays.Count);
         var hotkeyRows = Math.Max(1, content.Hotkeys.Count);
-        return 144 + (hotkeyRows * 40) + (displayRows * 32);
+        return 112 + (hotkeyRows * 40) + (displayRows * 32);
     }
 
     private static int ActionRowWidth(string key, string description) =>
-        84 + EstimateTextWidth(key, 13, bold: true) + EstimateTextWidth(description, 14, bold: false);
+        30 + Math.Max(54, EstimateTextWidth(key, 13, bold: true) + 18) + EstimateTextWidth(description, 14, bold: false);
 
     private static int DisplayRowWidth(string deviceName, string description, string role) =>
         44 + 76 + 16 + EstimateTextWidth(description, 13, bold: false) + RoleWidth(role);
