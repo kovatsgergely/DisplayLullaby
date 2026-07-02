@@ -84,6 +84,7 @@ internal sealed class AvaloniaSettingsWindow : Window
     private readonly Action _onCaptureEnded;
     private readonly Action _onClosed;
     private readonly TextBlock _statusText;
+    private readonly Border _statusBox;
     private readonly Button _globalHotkeyButton;
     private readonly Button _primaryHotkeyButton;
     private readonly Button _secondaryHotkeyButton;
@@ -124,11 +125,24 @@ internal sealed class AvaloniaSettingsWindow : Window
         _statusText = new TextBlock
         {
             Text = string.Empty,
-            IsVisible = false,
             FontSize = 12,
-            Foreground = Brush(64, 92, 133),
+            FontWeight = FontWeight.SemiBold,
+            Foreground = Brush(30, 64, 120),
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
+        };
+
+        _statusBox = new Border
+        {
+            IsVisible = false,
+            MinHeight = 36,
+            Background = Brush(238, 245, 253),
+            BorderBrush = Brush(190, 210, 235),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(7),
+            Padding = new Thickness(10, 7),
+            Margin = new Thickness(0, 0, 0, 7),
+            Child = _statusText
         };
 
         _globalHotkeyButton = HotkeyButton(settings.GlobalOffHotkey, () => StartCapture(CaptureTarget.Global));
@@ -350,7 +364,7 @@ internal sealed class AvaloniaSettingsWindow : Window
             Margin = new Thickness(10, 7, 10, 10)
         };
 
-        AddCell(grid, _statusText, 0, 0, columnSpan: 6);
+        AddCell(grid, _statusBox, 0, 0, columnSpan: 6);
 
         var testPrimary = SecondaryButton("Test primary", () => TestTemporaryStandby(primary: true), 100);
         var testSecondary = SecondaryButton("Test secondary", () => TestTemporaryStandby(primary: false), 118);
@@ -925,7 +939,7 @@ internal sealed class AvaloniaSettingsWindow : Window
     private void SetStatus(string text)
     {
         _statusText.Text = text;
-        _statusText.IsVisible = text.Length > 0;
+        _statusBox.IsVisible = text.Length > 0;
     }
 
     private static SolidColorBrush Brush(byte r, byte g, byte b) => new(Color.FromRgb(r, g, b));
