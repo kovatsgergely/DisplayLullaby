@@ -100,15 +100,8 @@ internal sealed class AppConfig
             WriteInitialConfig(path);
         }
 
-        var migrated = MigrateRemovedRoleTargets(path);
-        var config = Parse(File.ReadAllLines(path));
-        if (migrated || ContainsRemovedRoleWording(File.ReadAllText(path)))
-        {
-            SaveSettings(config.ToSettings());
-            config = Parse(File.ReadAllLines(path));
-        }
-
-        return config;
+        MigrateRemovedRoleTargets(path);
+        return Parse(File.ReadAllLines(path));
     }
 
     public AppSettings ToSettings()
@@ -166,6 +159,11 @@ internal sealed class AppConfig
             return false;
         }
 
+        if (!TryValidateDistinctHotkeys(settings, out warning))
+        {
+            return false;
+        }
+
         if (!TryValidateTargetText(settings.PrimaryStandbyTarget, out warning))
         {
             warning = $"F10 standby target: {warning}";
@@ -198,6 +196,39 @@ internal sealed class AppConfig
 
         warning = string.Empty;
         return true;
+    }
+
+    private static bool TryValidateDistinctHotkeys(AppSettings settings, out string warning)
+    {
+        var hotkeys = new[]
+        {
+            ("All monitors off", settings.GlobalOffHotkey),
+            ("Primary standby", settings.PrimaryStandbyHotkey),
+            ("Secondary standby", settings.SecondaryStandbyHotkey)
+        };
+
+        for (var i = 0; i < hotkeys.Length; i++)
+        {
+            for (var j = i + 1; j < hotkeys.Length; j++)
+            {
+                if (SameHotkey(hotkeys[i].Item2, hotkeys[j].Item2))
+                {
+                    warning = $"{hotkeys[j].Item1} hotkey must be different from {hotkeys[i].Item1}.";
+                    return false;
+                }
+            }
+        }
+
+        warning = string.Empty;
+        return true;
+    }
+
+    private static bool SameHotkey(string left, string right)
+    {
+        return TryParseKeyChord(left.Trim(), out var leftModifiers, out var leftVirtualKey, out _) &&
+               TryParseKeyChord(right.Trim(), out var rightModifiers, out var rightVirtualKey, out _) &&
+               leftModifiers == rightModifiers &&
+               leftVirtualKey == rightVirtualKey;
     }
 
     public static bool TryValidateHotkeyText(string text, out string warning)
@@ -245,12 +276,6 @@ internal sealed class AppConfig
         return false;
     }
 
-    private static bool ContainsRemovedRoleWording(string configText) =>
-        configText.Contains("current primary monitor", StringComparison.OrdinalIgnoreCase) ||
-        configText.Contains("current secondary monitor", StringComparison.OrdinalIgnoreCase) ||
-        configText.Contains("primary display", StringComparison.OrdinalIgnoreCase) ||
-        configText.Contains("secondary display", StringComparison.OrdinalIgnoreCase);
-
     private static string MigrateRemovedRoleTargetLine(string line, string primaryTarget, string secondaryTarget)
     {
         var commentIndex = line.IndexOf('#');
@@ -259,7 +284,7 @@ internal sealed class AppConfig
         var splitAt = active.IndexOf('=');
         if (splitAt < 0 || !active[..splitAt].Trim().Equals("Hotkey", StringComparison.OrdinalIgnoreCase))
         {
-            return line;
+            return MigrateRemovedRoleWording(line, primaryTarget, secondaryTarget);
         }
 
         var value = active[(splitAt + 1)..];
@@ -267,10 +292,10 @@ internal sealed class AppConfig
         var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length != 3 || !TryMapRemovedRoleTarget(parts[2], primaryTarget, secondaryTarget, out var replacement))
         {
-            return line;
+            return MigrateRemovedRoleWording(line, primaryTarget, secondaryTarget);
         }
 
-        return string.Concat(
+        var migratedLine = string.Concat(
             active[..(splitAt + 1)],
             new string(' ', leadingWhitespace),
             parts[0],
@@ -279,7 +304,14 @@ internal sealed class AppConfig
             " ",
             replacement,
             comment);
+        return MigrateRemovedRoleWording(migratedLine, primaryTarget, secondaryTarget);
     }
+
+    private static string MigrateRemovedRoleWording(string line, string primaryTarget, string secondaryTarget) =>
+        line.Replace("current primary monitor", primaryTarget, StringComparison.OrdinalIgnoreCase)
+            .Replace("current secondary monitor", secondaryTarget, StringComparison.OrdinalIgnoreCase)
+            .Replace("primary display", primaryTarget, StringComparison.OrdinalIgnoreCase)
+            .Replace("secondary display", secondaryTarget, StringComparison.OrdinalIgnoreCase);
 
     private static string GetDetectedDisplayTarget(bool primary, string fallback) =>
         MonitorController.TryGetRoleDisplayName(primary, out var displayName) ? displayName : fallback;
@@ -465,7 +497,24 @@ internal sealed class AppConfig
             }
         }
 
+        AddDuplicateHotkeyWarnings(hotkeys, warnings);
         return new AppConfig(sleepMode, temporaryStandbyIdleMinutes, temporaryStandbyWakeDelaySeconds, hotkeys, warnings);
+    }
+
+    private static void AddDuplicateHotkeyWarnings(IReadOnlyList<HotkeyBinding> hotkeys, List<string> warnings)
+    {
+        var seen = new Dictionary<(NativeMethods.HotkeyModifiers Modifiers, uint VirtualKey), HotkeyBinding>();
+        foreach (var hotkey in hotkeys)
+        {
+            var chord = (hotkey.Modifiers, hotkey.VirtualKey);
+            if (seen.TryGetValue(chord, out var existing))
+            {
+                warnings.Add($"Hotkey '{ExtractHotkeyText(hotkey, hotkey.DisplayText)}' duplicates '{ExtractHotkeyText(existing, existing.DisplayText)}'. Only one command can use a hotkey.");
+                continue;
+            }
+
+            seen.Add(chord, hotkey);
+        }
     }
 
     private static bool TryParsePowerMode(string text, out MonitorPowerMode powerMode)

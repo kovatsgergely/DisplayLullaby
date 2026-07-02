@@ -17,6 +17,7 @@ internal sealed unsafe class TrayApplication
     private const uint TemporaryStandbyTimerIntervalMs = 500;
     private const int TemporaryStandbyInputGraceMs = 1200;
     private static readonly nuint TemporaryStandbyTimerId = 1;
+    private static readonly nuint TemporaryStandbyWakeDelayTimerId = 2;
 
     private static readonly NativeMethods.WndProc WindowProc = WndProc;
     private static TrayApplication? _current;
@@ -32,6 +33,7 @@ internal sealed unsafe class TrayApplication
     private AppConfig _config = AppConfig.Parse(Array.Empty<string>());
     private TemporaryStandbyState? _temporaryStandby;
     private bool _temporaryStandbyTimerRunning;
+    private bool _temporaryStandbyWakeDelayTimerRunning;
 
     public static int Run()
     {
@@ -60,6 +62,7 @@ internal sealed unsafe class TrayApplication
 
         UnregisterConfiguredHotkeys();
         StopTemporaryStandbyTimer();
+        StopTemporaryStandbyWakeDelayTimer();
         _settingsWindow?.Close();
         _helpPopup?.Destroy();
         AvaloniaUiHost.Shutdown();
@@ -163,8 +166,19 @@ internal sealed unsafe class TrayApplication
     private void RegisterConfiguredHotkeys(bool showWarnings)
     {
         UnregisterConfiguredHotkeys();
+        var seenChords = new HashSet<(NativeMethods.HotkeyModifiers Modifiers, uint VirtualKey)>();
         foreach (var hotkey in _config.Hotkeys)
         {
+            if (!seenChords.Add((hotkey.Modifiers, hotkey.VirtualKey)))
+            {
+                if (showWarnings)
+                {
+                    ShowBalloon("DisplayLullaby hotkey skipped", $"{hotkey.DisplayText}: duplicate hotkey.");
+                }
+
+                continue;
+            }
+
             if (NativeMethods.RegisterHotKey(_hwnd, hotkey.Id, hotkey.Modifiers, hotkey.VirtualKey))
             {
                 _registeredHotkeys.Add(hotkey.Id, hotkey);
@@ -554,6 +568,7 @@ internal sealed unsafe class TrayApplication
 
     private void StartTemporaryStandbyTimer()
     {
+        StopTemporaryStandbyWakeDelayTimer();
         StopTemporaryStandbyTimer();
         if (NativeMethods.SetTimer(_hwnd, TemporaryStandbyTimerId, TemporaryStandbyTimerIntervalMs, IntPtr.Zero) == 0)
         {
@@ -562,6 +577,20 @@ internal sealed unsafe class TrayApplication
         }
 
         _temporaryStandbyTimerRunning = true;
+    }
+
+    private void StartTemporaryStandbyWakeDelayTimer()
+    {
+        StopTemporaryStandbyWakeDelayTimer();
+        var delayMilliseconds = (uint)Math.Max(1, _config.TemporaryStandbyWakeDelaySeconds * 1000);
+        if (NativeMethods.SetTimer(_hwnd, TemporaryStandbyWakeDelayTimerId, delayMilliseconds, IntPtr.Zero) == 0)
+        {
+            ShowBalloon("DisplayLullaby", $"Could not start wake delay timer: {NativeMethods.LastErrorMessage()}");
+            SendGlobalPowerOffAfterTemporaryStandby();
+            return;
+        }
+
+        _temporaryStandbyWakeDelayTimerRunning = true;
     }
 
     private void StopTemporaryStandbyTimer()
@@ -575,10 +604,22 @@ internal sealed unsafe class TrayApplication
         _temporaryStandbyTimerRunning = false;
     }
 
+    private void StopTemporaryStandbyWakeDelayTimer()
+    {
+        if (!_temporaryStandbyWakeDelayTimerRunning)
+        {
+            return;
+        }
+
+        NativeMethods.KillTimer(_hwnd, TemporaryStandbyWakeDelayTimerId);
+        _temporaryStandbyWakeDelayTimerRunning = false;
+    }
+
     private void ClearTemporaryStandby()
     {
         _temporaryStandby = null;
         StopTemporaryStandbyTimer();
+        StopTemporaryStandbyWakeDelayTimer();
     }
 
     private void CheckTemporaryStandbyHandoff()
@@ -630,9 +671,15 @@ internal sealed unsafe class TrayApplication
 
         if (_config.TemporaryStandbyWakeDelaySeconds > 0)
         {
-            Thread.Sleep(TimeSpan.FromSeconds(_config.TemporaryStandbyWakeDelaySeconds));
+            StartTemporaryStandbyWakeDelayTimer();
+            return;
         }
 
+        SendGlobalPowerOffAfterTemporaryStandby();
+    }
+
+    private void SendGlobalPowerOffAfterTemporaryStandby()
+    {
         _helpPopup?.Hide();
         if (!MonitorController.TrySendGlobalPowerOff())
         {
@@ -683,6 +730,19 @@ internal sealed unsafe class TrayApplication
 
     private nint HandleWindowMessage(IntPtr hwnd, uint msg, nuint wParam, nint lParam)
     {
+        try
+        {
+            return HandleWindowMessageCore(hwnd, msg, wParam, lParam);
+        }
+        catch (Exception ex)
+        {
+            ShowBalloon("DisplayLullaby", ex.Message);
+            return 0;
+        }
+    }
+
+    private nint HandleWindowMessageCore(IntPtr hwnd, uint msg, nuint wParam, nint lParam)
+    {
         switch (msg)
         {
             case NativeMethods.WmTray:
@@ -709,6 +769,13 @@ internal sealed unsafe class TrayApplication
                     return 0;
                 }
 
+                if (wParam == TemporaryStandbyWakeDelayTimerId)
+                {
+                    StopTemporaryStandbyWakeDelayTimer();
+                    SendGlobalPowerOffAfterTemporaryStandby();
+                    return 0;
+                }
+
                 return 0;
 
             case NativeMethods.WmHotkey:
@@ -729,6 +796,7 @@ internal sealed unsafe class TrayApplication
 
             case NativeMethods.WmDestroy:
                 StopTemporaryStandbyTimer();
+                StopTemporaryStandbyWakeDelayTimer();
                 NativeMethods.PostQuitMessage(0);
                 return 0;
 
