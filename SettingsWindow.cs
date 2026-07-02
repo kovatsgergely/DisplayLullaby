@@ -335,7 +335,7 @@ internal sealed class AvaloniaSettingsWindow : Window
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto)
             },
-            ColumnSpacing = 7,
+            ColumnSpacing = 5,
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Auto),
@@ -346,8 +346,8 @@ internal sealed class AvaloniaSettingsWindow : Window
 
         AddCell(grid, _statusText, 0, 0, columnSpan: 6);
 
-        var testPrimary = SecondaryButton("Test primary", () => TestTemporaryStandby(primary: true), 86);
-        var testSecondary = SecondaryButton("Test secondary", () => TestTemporaryStandby(primary: false), 98);
+        var testPrimary = SecondaryButton("Test primary", () => TestTemporaryStandby(primary: true), 100);
+        var testSecondary = SecondaryButton("Test secondary", () => TestTemporaryStandby(primary: false), 118);
         var allOff = SecondaryButton("All off", TurnAllMonitorsOff, 64);
         allOff.Foreground = Brush(120, 53, 15);
         allOff.BorderBrush = Brush(245, 158, 11);
@@ -451,23 +451,23 @@ internal sealed class AvaloniaSettingsWindow : Window
         return button;
     }
 
-    private static Button PrimaryButton(string text, Action click, double width)
+    private static Button PrimaryButton(string text, Action click, double minWidth)
     {
-        var button = Button(text, click, width);
+        var button = Button(text, click, minWidth);
         button.Background = Brush(37, 99, 235);
         button.Foreground = Brushes.White;
         button.BorderBrush = Brush(29, 78, 216);
         return button;
     }
 
-    private static Button SecondaryButton(string text, Action click, double width) => Button(text, click, width);
+    private static Button SecondaryButton(string text, Action click, double minWidth) => Button(text, click, minWidth);
 
-    private static Button Button(string text, Action click, double width)
+    private static Button Button(string text, Action click, double minWidth)
     {
         var button = new Button
         {
             Content = text,
-            Width = width,
+            MinWidth = minWidth,
             MinHeight = 30,
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
