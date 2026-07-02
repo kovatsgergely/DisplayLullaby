@@ -137,7 +137,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         _powerModeCombo = Combo(["Standby", "Suspend", "PowerOff", "SoftOff"], SerializePowerMode(settings.PowerMode));
 
         _idleMinutesTextBox = NumberBox(settings.TemporaryStandbyIdleMinutes.ToString(), 52);
-        _wakeDelayTextBox = NumberBox(settings.TemporaryStandbyWakeDelaySeconds.ToString(), 46);
+        _wakeDelayTextBox = NumberBox(settings.TemporaryStandbyWakeDelaySeconds.ToString(), 52);
 
         Content = BuildContent();
         KeyDown += HandleKeyDown;
@@ -281,11 +281,8 @@ internal sealed class AvaloniaSettingsWindow : Window
             {
                 new ColumnDefinition(82, GridUnitType.Pixel),
                 new ColumnDefinition(124, GridUnitType.Pixel),
-                new ColumnDefinition(34, GridUnitType.Pixel),
-                new ColumnDefinition(22, GridUnitType.Pixel),
-                new ColumnDefinition(44, GridUnitType.Pixel),
-                new ColumnDefinition(52, GridUnitType.Pixel),
-                new ColumnDefinition(28, GridUnitType.Pixel)
+                new ColumnDefinition(1, GridUnitType.Star),
+                new ColumnDefinition(GridLength.Auto)
             },
             ColumnSpacing = 6,
             RowSpacing = 7,
@@ -299,11 +296,8 @@ internal sealed class AvaloniaSettingsWindow : Window
         AddCell(grid, Label("DDC mode"), 0, 0);
         AddCell(grid, _powerModeCombo, 0, 1);
         AddCell(grid, Label("Idle"), 1, 0);
-        AddCell(grid, _idleMinutesTextBox, 1, 1);
-        AddCell(grid, Unit("min"), 1, 2);
-        AddCell(grid, Label("Wake"), 1, 4);
-        AddCell(grid, _wakeDelayTextBox, 1, 5);
-        AddCell(grid, Unit("sec"), 1, 6);
+        AddCell(grid, ValueWithUnit(_idleMinutesTextBox, "min"), 1, 1);
+        AddCell(grid, WakeDelayGroup(), 1, 3);
 
         return Card("Standby behavior", grid);
     }
@@ -421,6 +415,33 @@ internal sealed class AvaloniaSettingsWindow : Window
             Foreground = Brush(15, 23, 42),
             VerticalAlignment = VerticalAlignment.Center
         };
+
+    private StackPanel WakeDelayGroup()
+    {
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        panel.Children.Add(Label("Wake"));
+        panel.Children.Add(_wakeDelayTextBox);
+        panel.Children.Add(Unit("sec"));
+        return panel;
+    }
+
+    private static StackPanel ValueWithUnit(Control value, string unit)
+    {
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        panel.Children.Add(value);
+        panel.Children.Add(Unit(unit));
+        return panel;
+    }
 
     private static Button HotkeyButton(string text, Action click)
     {
