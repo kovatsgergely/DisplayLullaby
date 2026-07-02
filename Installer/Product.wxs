@@ -1,0 +1,107 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package
+    Name="DisplayLullaby"
+    Manufacturer="kovatsgergely"
+    Version="$(var.DisplayLullabyVersion)"
+    UpgradeCode="{EC441C33-D55A-4455-B582-17F833B02D25}"
+    Scope="perUser">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="DisplayLullabyIcon" SourceFile="$(var.AppProjectDir)\Assets\DisplayLullaby.ico" />
+    <Property Id="ARPPRODUCTICON" Value="DisplayLullabyIcon" />
+
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.AppProjectDir)\Installer\License.rtf" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="DisplayLullaby" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="DisplayLullaby" />
+    </StandardDirectory>
+
+    <Feature Id="ApplicationFeature" Title="DisplayLullaby" Level="1" AllowAdvertise="no">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentRef Id="StartMenuShortcutComponent" />
+    </Feature>
+
+    <Feature
+      Id="StartupFeature"
+      Title="Start with Windows"
+      Description="Start DisplayLullaby automatically when you sign in."
+      Level="100"
+      AllowAdvertise="no">
+      <ComponentRef Id="StartupRunComponent" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="DisplayLullabyExeComponent" Guid="{1C5B2046-82BE-4944-BF59-7CD850B2B419}">
+        <File Id="DisplayLullabyExe" Source="$(var.ReleaseDir)\DisplayLullaby.exe" />
+        <RegistryValue Root="HKCU" Key="Software\DisplayLullaby\InstalledFiles" Name="DisplayLullabyExe" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Id="AvaloniaGlesComponent" Guid="{035F8869-493F-448A-B9AC-D92B8CEAD01E}">
+        <File Id="AvaloniaGlesDll" Source="$(var.ReleaseDir)\av_libglesv2.dll" />
+        <RegistryValue Root="HKCU" Key="Software\DisplayLullaby\InstalledFiles" Name="AvaloniaGlesDll" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Id="HarfBuzzSharpComponent" Guid="{F141487A-8EAC-44DD-8A3B-1490B7EC1C5B}">
+        <File Id="HarfBuzzSharpDll" Source="$(var.ReleaseDir)\libHarfBuzzSharp.dll" />
+        <RegistryValue Root="HKCU" Key="Software\DisplayLullaby\InstalledFiles" Name="HarfBuzzSharpDll" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Id="SkiaSharpComponent" Guid="{88DC63A5-DB05-44ED-80E1-0E345DBDBEB8}">
+        <File Id="SkiaSharpDll" Source="$(var.ReleaseDir)\libSkiaSharp.dll" />
+        <RegistryValue Root="HKCU" Key="Software\DisplayLullaby\InstalledFiles" Name="SkiaSharpDll" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Id="InstallFolderCleanupComponent" Guid="{ABB42273-2087-42CD-B3A3-C0374171FFFD}">
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+        <RemoveFolder Id="RemoveProgramsFolder" Directory="ProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\DisplayLullaby" Name="InstallFolderCleanup" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Id="StartupRunComponent" Guid="{341C75CC-1FBE-4C39-936C-78CF7361C78E}">
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\Microsoft\Windows\CurrentVersion\Run"
+          Name="DisplayLullaby"
+          Type="string"
+          Value="&quot;[INSTALLFOLDER]DisplayLullaby.exe&quot;"
+          KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="StartMenuShortcutComponent" Guid="{87D50A2E-24F0-4D33-B869-7A29EAB45F00}">
+        <Shortcut
+          Id="DisplayLullabyStartMenuShortcut"
+          Name="DisplayLullaby"
+          Description="Start DisplayLullaby"
+          Target="[INSTALLFOLDER]DisplayLullaby.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\DisplayLullaby"
+          Name="StartMenuShortcut"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ApplicationFiles">
+      <ComponentRef Id="DisplayLullabyExeComponent" />
+      <ComponentRef Id="AvaloniaGlesComponent" />
+      <ComponentRef Id="HarfBuzzSharpComponent" />
+      <ComponentRef Id="SkiaSharpComponent" />
+      <ComponentRef Id="InstallFolderCleanupComponent" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>

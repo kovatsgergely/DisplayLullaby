@@ -58,3 +58,21 @@ Laptop panels often do not support this path. Some docks, adapters, KVMs, or mon
 - `wake`: value `0x01`
 
 Some monitors accept only one of these sleep/off values, so try another option if the first command does not work.
+
+## Building
+
+The app version lives in `Version.props`.
+
+Create the signed release build:
+
+```powershell
+.\Publish-Release.ps1
+```
+
+Create the signed MSI installer:
+
+```powershell
+.\Build-Installer.ps1
+```
+
+The MSI is written to `Release\DisplayLullaby-<version>-x64.msi`. It installs per user under `%LOCALAPPDATA%\Programs\DisplayLullaby`, creates a Start Menu shortcut, and offers an optional `Start with Windows` feature during setup. The optional startup feature writes an HKCU Run entry and is off by default.

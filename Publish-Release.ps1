@@ -5,13 +5,13 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = $PSScriptRoot
-$solutionPath = Join-Path $projectRoot 'DisplayLullaby.slnx'
+$projectPath = Join-Path $projectRoot 'DisplayLullaby.csproj'
 $releaseDir = Join-Path $projectRoot 'Release'
 $exePath = Join-Path $releaseDir 'DisplayLullaby.exe'
 
 New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
 
-dotnet publish $solutionPath -c Release -r win-x64 "-p:PublishDir=$releaseDir\"
+dotnet publish $projectPath -c Release -r win-x64 "-p:PublishDir=$releaseDir\"
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE."
 }

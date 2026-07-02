@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <DisplayLullabyVersion>0.1.0</DisplayLullabyVersion>
+    <DisplayLullabyFileVersion>0.1.0.0</DisplayLullabyFileVersion>
+    <Version>$(DisplayLullabyVersion)</Version>
+    <AssemblyVersion>$(DisplayLullabyFileVersion)</AssemblyVersion>
+    <FileVersion>$(DisplayLullabyFileVersion)</FileVersion>
+    <InformationalVersion>$(DisplayLullabyVersion)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>

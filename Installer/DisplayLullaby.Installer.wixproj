@@ -1,0 +1,14 @@
+<Project Sdk="WixToolset.Sdk/6.0.0">
+  <Import Project="..\Version.props" />
+  <PropertyGroup>
+    <OutputName>DisplayLullaby-$(DisplayLullabyVersion)-x64</OutputName>
+    <OutputPath>..\Release\</OutputPath>
+    <IntermediateOutputPath>obj\$(Configuration)\</IntermediateOutputPath>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <DefineConstants>DisplayLullabyVersion=$(DisplayLullabyVersion);ReleaseDir=..\Release;AppProjectDir=..</DefineConstants>
+    <SuppressIces>ICE91</SuppressIces>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="6.0.0" />
+  </ItemGroup>
+</Project>
