@@ -31,6 +31,7 @@ internal sealed class HelpPopupWindow
     {
         AvaloniaUiHost.Invoke(() =>
         {
+            AvaloniaUiHost.ApplySystemTheme();
             _window ??= new AvaloniaHelpPopupWindow(MarkHidden);
             _window.UpdateContent(content);
             _window.PrepareToShow();
@@ -290,8 +291,8 @@ internal sealed class AvaloniaHelpPopupWindow : Window
         return new Border
         {
             Padding = new Thickness(16),
-            Background = Brushes.White,
-            BorderBrush = Brush(203, 213, 225),
+            Background = Palette.SurfaceBackground,
+            BorderBrush = Palette.SurfaceBorder,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             Child = stack
@@ -329,13 +330,13 @@ internal sealed class AvaloniaHelpPopupWindow : Window
             Text = "DisplayLullaby",
             FontSize = 20,
             FontWeight = FontWeight.SemiBold,
-            Foreground = Brush(15, 23, 42)
+            Foreground = Palette.PrimaryText
         });
         text.Children.Add(new TextBlock
         {
             Text = "Monitor standby shortcuts",
             FontSize = 13,
-            Foreground = Brush(82, 105, 145)
+            Foreground = Palette.MutedText
         });
 
         Grid.SetColumn(icon, 0);
@@ -382,8 +383,8 @@ internal sealed class AvaloniaHelpPopupWindow : Window
         {
             Width = 48,
             Height = 22,
-            Background = Brushes.White,
-            BorderBrush = Brush(191, 219, 254),
+            Background = Palette.SurfaceBackground,
+            BorderBrush = Palette.HelpActionBorder,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
             VerticalAlignment = VerticalAlignment.Center,
@@ -392,7 +393,7 @@ internal sealed class AvaloniaHelpPopupWindow : Window
                 Text = key,
                 FontSize = 13,
                 FontWeight = FontWeight.SemiBold,
-                Foreground = Brush(37, 99, 235),
+                Foreground = Palette.AccentText,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextAlignment = TextAlignment.Center
@@ -403,7 +404,7 @@ internal sealed class AvaloniaHelpPopupWindow : Window
         {
             Text = description,
             FontSize = 14,
-            Foreground = Brush(30, 41, 59),
+            Foreground = Palette.PrimaryText,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
@@ -416,8 +417,8 @@ internal sealed class AvaloniaHelpPopupWindow : Window
         return new Border
         {
             Height = 34,
-            Background = Brush(239, 246, 255),
-            BorderBrush = Brush(191, 219, 254),
+            Background = Palette.HelpActionBackground,
+            BorderBrush = Palette.HelpActionBorder,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(7),
             Padding = new Thickness(10, 5),
@@ -436,7 +437,7 @@ internal sealed class AvaloniaHelpPopupWindow : Window
             Text = "DISPLAYS",
             FontSize = 11,
             FontWeight = FontWeight.SemiBold,
-            Foreground = Brush(71, 85, 105),
+            Foreground = Palette.MutedText,
             Margin = new Thickness(0, 2, 0, 0)
         });
 
@@ -472,7 +473,7 @@ internal sealed class AvaloniaHelpPopupWindow : Window
             Text = deviceName,
             FontSize = 13,
             FontWeight = FontWeight.SemiBold,
-            Foreground = Brush(15, 23, 42),
+            Foreground = Palette.PrimaryText,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
@@ -480,14 +481,14 @@ internal sealed class AvaloniaHelpPopupWindow : Window
         {
             Text = description,
             FontSize = 13,
-            Foreground = Brush(30, 41, 59),
+            Foreground = Palette.PrimaryText,
             VerticalAlignment = VerticalAlignment.Center
         };
         var roleText = new TextBlock
         {
             Text = role,
             FontSize = 13,
-            Foreground = Brush(82, 105, 145),
+            Foreground = Palette.MutedText,
             VerticalAlignment = VerticalAlignment.Center,
             IsVisible = !string.IsNullOrWhiteSpace(role)
         };
@@ -502,8 +503,8 @@ internal sealed class AvaloniaHelpPopupWindow : Window
         return new Border
         {
             Height = 26,
-            Background = Brush(248, 250, 252),
-            BorderBrush = Brush(226, 232, 240),
+            Background = Palette.HelpRowBackground,
+            BorderBrush = Palette.HelpRowBorder,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(10, 3),
@@ -517,7 +518,7 @@ internal sealed class AvaloniaHelpPopupWindow : Window
         return new Bitmap(stream);
     }
 
-    private static SolidColorBrush Brush(byte r, byte g, byte b) => new(Color.FromRgb(r, g, b));
+    private static DisplayLullabyPalette Palette => DisplayLullabyTheme.Current;
 
     private bool IsOpeningGracePeriod() => (DateTime.UtcNow - _shownUtc).TotalMilliseconds < 300;
 }

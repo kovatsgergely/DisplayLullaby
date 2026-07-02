@@ -12,7 +12,7 @@ internal sealed class DisplayLullabyAvaloniaApp : Application
 {
     public override void Initialize()
     {
-        RequestedThemeVariant = ThemeVariant.Light;
+        RequestedThemeVariant = DisplayLullabyTheme.RequestedThemeVariant;
         Styles.Add(new FluentTheme());
     }
 
@@ -84,6 +84,14 @@ internal static class AvaloniaUiHost
                 lifetime.Shutdown();
             }
         });
+    }
+
+    public static void ApplySystemTheme()
+    {
+        if (Application.Current is { } application)
+        {
+            application.RequestedThemeVariant = DisplayLullabyTheme.RequestedThemeVariant;
+        }
     }
 
     internal static void NotifyStarted() => Started.Set();

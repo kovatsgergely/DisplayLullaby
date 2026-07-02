@@ -42,6 +42,7 @@ internal sealed class SettingsWindow
     {
         AvaloniaUiHost.Invoke(() =>
         {
+            AvaloniaUiHost.ApplySystemTheme();
             if (_window is { } existing)
             {
                 if (!existing.IsVisible)
@@ -130,14 +131,14 @@ internal sealed class AvaloniaSettingsWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         UseLayoutRounding = true;
         FontFamily = new FontFamily("Inter, Segoe UI");
-        Background = Brush(246, 248, 252);
+        Background = Palette.WindowBackground;
 
         _statusText = new TextBlock
         {
             Text = string.Empty,
             FontSize = 12,
             FontWeight = FontWeight.SemiBold,
-            Foreground = Brush(30, 64, 120),
+            Foreground = Palette.StatusText,
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -146,8 +147,8 @@ internal sealed class AvaloniaSettingsWindow : Window
         {
             IsVisible = false,
             MinHeight = 36,
-            Background = Brush(238, 245, 253),
-            BorderBrush = Brush(190, 210, 235),
+            Background = Palette.StatusBackground,
+            BorderBrush = Palette.StatusBorder,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(7),
             Padding = new Thickness(10, 7),
@@ -247,13 +248,13 @@ internal sealed class AvaloniaSettingsWindow : Window
             Text = "DisplayLullaby settings",
             FontSize = 21,
             FontWeight = FontWeight.SemiBold,
-            Foreground = Brush(15, 23, 42)
+            Foreground = Palette.PrimaryText
         });
         text.Children.Add(new TextBlock
         {
             Text = "Hotkeys, standby handoff, and display targets",
             FontSize = 12,
-            Foreground = Brush(55, 83, 128)
+            Foreground = Palette.SecondaryText
         });
 
         Grid.SetColumn(icon, 0);
@@ -262,7 +263,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         grid.Children.Add(text);
         return new Border
         {
-            Background = Brush(238, 245, 253),
+            Background = Palette.HeaderBackground,
             Padding = new Thickness(16, 12, 16, 12),
             Child = grid
         };
@@ -347,7 +348,7 @@ internal sealed class AvaloniaSettingsWindow : Window
             {
                 Text = row,
                 FontSize = 12,
-                Foreground = Brush(15, 23, 42)
+                Foreground = Palette.PrimaryText
             });
         }
 
@@ -382,9 +383,9 @@ internal sealed class AvaloniaSettingsWindow : Window
         var testSecondary = SecondaryButton("Test secondary", () => TestTemporaryStandby(primary: false), 118);
         _secondaryTestButton = testSecondary;
         var allOff = SecondaryButton("All off", TurnAllMonitorsOff, 64);
-        allOff.Foreground = Brush(120, 53, 15);
-        allOff.BorderBrush = Brush(245, 158, 11);
-        allOff.Background = Brush(255, 251, 235);
+        allOff.Foreground = Palette.WarningText;
+        allOff.BorderBrush = Palette.WarningBorder;
+        allOff.Background = Palette.WarningBackground;
         var save = PrimaryButton("Save", Save, 68);
         var cancel = SecondaryButton("Cancel", Close, 70);
 
@@ -408,14 +409,14 @@ internal sealed class AvaloniaSettingsWindow : Window
             Text = title,
             FontSize = 14,
             FontWeight = FontWeight.SemiBold,
-            Foreground = Brush(32, 55, 83)
+            Foreground = Palette.CardTitleText
         });
         stack.Children.Add(content);
 
         return new Border
         {
-            Background = Brushes.White,
-            BorderBrush = Brush(218, 228, 240),
+            Background = Palette.SurfaceBackground,
+            BorderBrush = Palette.SurfaceBorder,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(14, 12, 14, 12),
@@ -428,7 +429,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         {
             Text = text,
             FontSize = 11,
-            Foreground = Brush(15, 23, 42)
+            Foreground = Palette.PrimaryText
         };
 
     private static TextBlock Label(string text) =>
@@ -436,7 +437,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         {
             Text = text,
             FontSize = 13,
-            Foreground = Brush(15, 23, 42),
+            Foreground = Palette.PrimaryText,
             VerticalAlignment = VerticalAlignment.Center
         };
 
@@ -453,6 +454,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         {
             Text = tooltip,
             FontSize = 12,
+            Foreground = Palette.PrimaryText,
             MaxWidth = 280,
             TextWrapping = TextWrapping.Wrap
         });
@@ -465,7 +467,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         {
             Text = text,
             FontSize = 11,
-            Foreground = Brush(15, 23, 42),
+            Foreground = Palette.PrimaryText,
             VerticalAlignment = VerticalAlignment.Center
         };
 
@@ -499,8 +501,9 @@ internal sealed class AvaloniaSettingsWindow : Window
     private static Button HotkeyButton(string text, Action click)
     {
         var button = SecondaryButton(text, click, 78);
-        button.Foreground = Brush(29, 78, 216);
-        button.Background = Brush(248, 251, 255);
+        button.Foreground = Palette.AccentText;
+        button.Background = Palette.AccentBackground;
+        button.BorderBrush = Palette.AccentBorder;
         ToolTip.SetPlacement(button, PlacementMode.Right);
         return button;
     }
@@ -508,9 +511,9 @@ internal sealed class AvaloniaSettingsWindow : Window
     private static Button PrimaryButton(string text, Action click, double minWidth)
     {
         var button = Button(text, click, minWidth);
-        button.Background = Brush(37, 99, 235);
-        button.Foreground = Brushes.White;
-        button.BorderBrush = Brush(29, 78, 216);
+        button.Background = Palette.PrimaryButtonBackground;
+        button.Foreground = Palette.PrimaryButtonText;
+        button.BorderBrush = Palette.PrimaryButtonBorder;
         return button;
     }
 
@@ -1081,7 +1084,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         _statusBox.IsVisible = text.Length > 0;
     }
 
-    private static SolidColorBrush Brush(byte r, byte g, byte b) => new(Color.FromRgb(r, g, b));
+    private static DisplayLullabyPalette Palette => DisplayLullabyTheme.Current;
 
     private enum CaptureTarget
     {
