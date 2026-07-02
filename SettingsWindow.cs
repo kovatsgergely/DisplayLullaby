@@ -136,8 +136,8 @@ internal sealed class AvaloniaSettingsWindow : Window
         _secondaryTargetCombo = Combo(targetOptions, settings.SecondaryStandbyTarget);
         _powerModeCombo = Combo(["Standby", "Suspend", "PowerOff", "SoftOff"], SerializePowerMode(settings.PowerMode));
 
-        _idleMinutesTextBox = NumberBox(settings.TemporaryStandbyIdleMinutes.ToString(), 48);
-        _wakeDelayTextBox = NumberBox(settings.TemporaryStandbyWakeDelaySeconds.ToString(), 42);
+        _idleMinutesTextBox = NumberBox(settings.TemporaryStandbyIdleMinutes.ToString(), 52);
+        _wakeDelayTextBox = NumberBox(settings.TemporaryStandbyWakeDelaySeconds.ToString(), 46);
 
         Content = BuildContent();
         KeyDown += HandleKeyDown;
@@ -279,15 +279,13 @@ internal sealed class AvaloniaSettingsWindow : Window
         {
             ColumnDefinitions =
             {
-                new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(122, GridUnitType.Pixel),
-                new ColumnDefinition(1, GridUnitType.Star),
-                new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(48, GridUnitType.Pixel),
-                new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(42, GridUnitType.Pixel),
-                new ColumnDefinition(GridLength.Auto)
+                new ColumnDefinition(82, GridUnitType.Pixel),
+                new ColumnDefinition(124, GridUnitType.Pixel),
+                new ColumnDefinition(34, GridUnitType.Pixel),
+                new ColumnDefinition(22, GridUnitType.Pixel),
+                new ColumnDefinition(44, GridUnitType.Pixel),
+                new ColumnDefinition(52, GridUnitType.Pixel),
+                new ColumnDefinition(28, GridUnitType.Pixel)
             },
             ColumnSpacing = 6,
             RowSpacing = 7,
@@ -303,9 +301,9 @@ internal sealed class AvaloniaSettingsWindow : Window
         AddCell(grid, Label("Idle"), 1, 0);
         AddCell(grid, _idleMinutesTextBox, 1, 1);
         AddCell(grid, Unit("min"), 1, 2);
-        AddCell(grid, Label("Wake"), 1, 3);
-        AddCell(grid, _wakeDelayTextBox, 1, 4);
-        AddCell(grid, Unit("sec"), 1, 5);
+        AddCell(grid, Label("Wake"), 1, 4);
+        AddCell(grid, _wakeDelayTextBox, 1, 5);
+        AddCell(grid, Unit("sec"), 1, 6);
 
         return Card("Standby behavior", grid);
     }
@@ -479,6 +477,7 @@ internal sealed class AvaloniaSettingsWindow : Window
             Width = width,
             MinHeight = 30,
             FontSize = 12,
+            HorizontalAlignment = HorizontalAlignment.Left,
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
             Padding = new Thickness(6, 4)
