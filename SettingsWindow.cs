@@ -94,6 +94,8 @@ internal sealed class AvaloniaSettingsWindow : Window
     private readonly TextBox _wakeDelayTextBox;
     private AppSettings _settings;
     private CaptureTarget _captureTarget;
+    private Button? _captureTooltipButton;
+    private DateTime _captureStartedUtc;
 
     public AvaloniaSettingsWindow(
         AppSettings settings,
@@ -125,6 +127,7 @@ internal sealed class AvaloniaSettingsWindow : Window
             IsVisible = false,
             FontSize = 12,
             Foreground = Brush(64, 92, 133),
+            TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
         };
 
@@ -142,6 +145,8 @@ internal sealed class AvaloniaSettingsWindow : Window
 
         Content = BuildContent();
         KeyDown += HandleKeyDown;
+        PointerPressed += HandlePointerPressed;
+        Deactivated += HandleDeactivated;
         Closed += (_, _) =>
         {
             EndCapture(resumeHotkeys: true);
@@ -449,6 +454,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         var button = SecondaryButton(text, click, 78);
         button.Foreground = Brush(29, 78, 216);
         button.Background = Brush(248, 251, 255);
+        ToolTip.SetPlacement(button, PlacementMode.Right);
         return button;
     }
 
@@ -530,9 +536,11 @@ internal sealed class AvaloniaSettingsWindow : Window
     private void StartCapture(CaptureTarget target)
     {
         _captureTarget = target;
+        _captureStartedUtc = DateTime.UtcNow;
         _onCaptureStarted();
         UpdateHotkeyButtons();
-        SetStatus(target switch
+        SetStatus(string.Empty);
+        ShowCaptureTooltip(target, target switch
         {
             CaptureTarget.Global => "Press a key for all monitors off.",
             CaptureTarget.Primary => "Press a key for primary standby.",
@@ -549,6 +557,7 @@ internal sealed class AvaloniaSettingsWindow : Window
             return;
         }
 
+        HideCaptureTooltip();
         _captureTarget = CaptureTarget.None;
         UpdateHotkeyButtons();
         if (resumeHotkeys)
@@ -556,6 +565,40 @@ internal sealed class AvaloniaSettingsWindow : Window
             _onCaptureEnded();
         }
     }
+
+    private void ShowCaptureTooltip(CaptureTarget target, string message)
+    {
+        HideCaptureTooltip();
+        var button = CaptureButton(target);
+        if (button is null)
+        {
+            return;
+        }
+
+        ToolTip.SetTip(button, message);
+        ToolTip.SetIsOpen(button, true);
+        _captureTooltipButton = button;
+    }
+
+    private void HideCaptureTooltip()
+    {
+        if (_captureTooltipButton is null)
+        {
+            return;
+        }
+
+        ToolTip.SetIsOpen(_captureTooltipButton, false);
+        _captureTooltipButton = null;
+    }
+
+    private Button? CaptureButton(CaptureTarget target) =>
+        target switch
+        {
+            CaptureTarget.Global => _globalHotkeyButton,
+            CaptureTarget.Primary => _primaryHotkeyButton,
+            CaptureTarget.Secondary => _secondaryHotkeyButton,
+            _ => null
+        };
 
     private void UpdateHotkeyButtons()
     {
@@ -577,6 +620,28 @@ internal sealed class AvaloniaSettingsWindow : Window
         {
             Close();
         }
+    }
+
+    private void HandlePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_captureTarget == CaptureTarget.None)
+        {
+            return;
+        }
+
+        EndCapture(resumeHotkeys: true);
+        e.Handled = true;
+    }
+
+    private void HandleDeactivated(object? sender, EventArgs e)
+    {
+        if (_captureTarget == CaptureTarget.None ||
+            (DateTime.UtcNow - _captureStartedUtc).TotalMilliseconds < 300)
+        {
+            return;
+        }
+
+        EndCapture(resumeHotkeys: true);
     }
 
     private void CaptureKey(KeyEventArgs e)
