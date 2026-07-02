@@ -115,6 +115,7 @@ internal sealed class SettingsWindow
             throw new InvalidOperationException($"Could not create settings window: {NativeMethods.LastErrorMessage()}");
         }
 
+        NativeMethods.SetWindowText(_hwnd, "DisplayLullaby settings");
         CreateControls();
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SwShow);
         NativeMethods.SetForegroundWindow(_hwnd);
@@ -168,7 +169,7 @@ internal sealed class SettingsWindow
             "Segoe UI");
 
         _titleFont = NativeMethods.CreateFont(
-            -Scale(22),
+            -Scale(20),
             0,
             0,
             0,
@@ -218,8 +219,8 @@ internal sealed class SettingsWindow
 
     private (int X, int Y, int Width, int Height) CalculateWindowBounds()
     {
-        var width = Scale(640);
-        var height = Scale(600);
+        var width = Scale(590);
+        var height = Scale(580);
         var point = new NativeMethods.Point();
         NativeMethods.GetCursorPos(out point);
 
@@ -241,41 +242,41 @@ internal sealed class SettingsWindow
 
     private void CreateControls()
     {
-        CreateLabel("Command", 42, 138, 150, 20, _smallFont);
-        CreateLabel("Hotkey", 254, 138, 90, 20, _smallFont);
-        CreateLabel("Target", 372, 138, 110, 20, _smallFont);
+        CreateLabel("Command", 42, 134, 150, 20, _smallFont);
+        CreateLabel("Hotkey", 240, 134, 90, 20, _smallFont);
+        CreateLabel("Target", 352, 134, 110, 20, _smallFont);
 
-        CreateLabel("All monitors off", 42, 166, 170, 26);
-        _globalHotkeyButton = CreateButton(_settings.GlobalOffHotkey, IdCaptureGlobal, 254, 160, 94, 34);
+        CreateLabel("All monitors off", 42, 162, 170, 26);
+        _globalHotkeyButton = CreateButton(_settings.GlobalOffHotkey, IdCaptureGlobal, 240, 156, 90, 34);
 
-        CreateLabel("Primary standby", 42, 208, 170, 26);
-        _primaryHotkeyButton = CreateButton(_settings.PrimaryStandbyHotkey, IdCapturePrimary, 254, 202, 94, 34);
-        _primaryTargetButton = CreateButton(_settings.PrimaryStandbyTarget, IdChoosePrimaryTarget, 372, 202, 220, 34);
+        CreateLabel("Primary standby", 42, 204, 170, 26);
+        _primaryHotkeyButton = CreateButton(_settings.PrimaryStandbyHotkey, IdCapturePrimary, 240, 198, 90, 34);
+        _primaryTargetButton = CreateButton(_settings.PrimaryStandbyTarget, IdChoosePrimaryTarget, 352, 198, 190, 34);
 
-        CreateLabel("Secondary standby", 42, 250, 170, 26);
-        _secondaryHotkeyButton = CreateButton(_settings.SecondaryStandbyHotkey, IdCaptureSecondary, 254, 244, 94, 34);
-        _secondaryTargetButton = CreateButton(_settings.SecondaryStandbyTarget, IdChooseSecondaryTarget, 372, 244, 220, 34);
+        CreateLabel("Secondary standby", 42, 246, 170, 26);
+        _secondaryHotkeyButton = CreateButton(_settings.SecondaryStandbyHotkey, IdCaptureSecondary, 240, 240, 90, 34);
+        _secondaryTargetButton = CreateButton(_settings.SecondaryStandbyTarget, IdChooseSecondaryTarget, 352, 240, 190, 34);
 
-        CreateLabel("DDC mode", 42, 344, 92, 26);
-        _powerModeButton = CreateButton(SerializePowerMode(_settings.PowerMode), IdChoosePowerMode, 140, 338, 126, 34);
+        CreateLabel("DDC mode", 42, 342, 88, 26);
+        _powerModeButton = CreateButton(SerializePowerMode(_settings.PowerMode), IdChoosePowerMode, 132, 336, 112, 34);
 
-        CreateLabel("Idle", 292, 344, 44, 26);
-        _idleMinutesEdit = CreateEdit(_settings.TemporaryStandbyIdleMinutes.ToString(), 336, 339, 54, 32, numbersOnly: true);
-        CreateLabel("min", 398, 345, 36, 22, _smallFont);
+        CreateLabel("Idle", 272, 342, 38, 26);
+        _idleMinutesEdit = CreateEdit(_settings.TemporaryStandbyIdleMinutes.ToString(), 338, 343, 32, 22, numbersOnly: true);
+        CreateLabel("min", 394, 343, 34, 22, _smallFont);
 
-        CreateLabel("Wake", 446, 344, 50, 26);
-        _wakeDelayEdit = CreateEdit(_settings.TemporaryStandbyWakeDelaySeconds.ToString(), 496, 339, 48, 32, numbersOnly: true);
-        CreateLabel("sec", 552, 345, 32, 22, _smallFont);
+        CreateLabel("Wake", 420, 342, 46, 26);
+        _wakeDelayEdit = CreateEdit(_settings.TemporaryStandbyWakeDelaySeconds.ToString(), 466, 343, 28, 22, numbersOnly: true);
+        CreateLabel("sec", 518, 343, 30, 22, _smallFont);
 
-        CreateLabel(BuildDisplaySummary(), 42, 444, 550, 38, _smallFont);
+        CreateLabel(BuildDisplaySummary(), 42, 432, 500, 38, _smallFont);
 
-        _statusLabel = CreateLabel("Ready.", 22, 492, 340, 22, _smallFont);
+        _statusLabel = CreateLabel("Ready.", 22, 480, 340, 22, _smallFont);
 
-        CreateButton("Test primary", IdTestPrimary, 22, 526, 104, 34);
-        CreateButton("Test secondary", IdTestSecondary, 136, 526, 116, 34);
-        CreateButton("All off", IdTurnAllOff, 262, 526, 74, 34);
-        CreateButton("Save", IdSave, 466, 526, 70, 34, defaultButton: true);
-        CreateButton("Cancel", IdCancel, 546, 526, 70, 34);
+        CreateButton("Test primary", IdTestPrimary, 22, 514, 104, 34);
+        CreateButton("Test secondary", IdTestSecondary, 136, 514, 116, 34);
+        CreateButton("All off", IdTurnAllOff, 262, 514, 74, 34);
+        CreateButton("Save", IdSave, 416, 514, 70, 34, defaultButton: true);
+        CreateButton("Cancel", IdCancel, 496, 514, 70, 34);
     }
 
     private void PaintWindow()
@@ -296,21 +297,28 @@ internal sealed class SettingsWindow
         NativeMethods.GetClientRect(_hwnd, out var clientRect);
         FillRect(hdc, clientRect, ColorRef(246, 248, 252));
 
-        var headerRect = ScaleRect(0, 0, 640, 82);
+        var headerRect = ScaleRect(0, 0, 590, 78);
         FillRect(hdc, headerRect, ColorRef(238, 245, 253));
 
-        DrawRoundRect(hdc, 22, 16, 48, 48, 14, ColorRef(37, 99, 235), ColorRef(30, 64, 175));
-        DrawMonitorGlyph(hdc, 36, 31);
+        DrawRoundRect(hdc, 22, 16, 44, 44, 13, ColorRef(37, 99, 235), ColorRef(30, 64, 175));
+        DrawMonitorGlyph(hdc, 34, 29);
 
-        DrawTextLine(hdc, "DisplayLullaby settings", 86, 17, 390, 30, _titleFont, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "Hotkeys, standby handoff, and display targets", 88, 49, 390, 22, _font, ColorRef(71, 94, 131));
+        DrawTextLine(hdc, "DisplayLullaby settings", 84, 16, 370, 30, _titleFont, ColorRef(15, 23, 42));
+        DrawTextLine(hdc, "Hotkeys, standby handoff, and display targets", 86, 47, 370, 22, _font, ColorRef(71, 94, 131));
 
-        DrawCard(hdc, 18, 96, 604, 190, "Hotkeys");
-        DrawCard(hdc, 18, 306, 604, 82, "Standby behavior");
-        DrawCard(hdc, 18, 406, 604, 80, "Detected displays");
+        DrawCard(hdc, 18, 94, 554, 188, "Hotkeys");
+        DrawCard(hdc, 18, 298, 554, 76, "Standby behavior");
+        DrawInputFrame(hdc, 328, 336, 54, 34);
+        DrawInputFrame(hdc, 456, 336, 48, 34);
+        DrawCard(hdc, 18, 390, 554, 76, "Detected displays");
 
-        var footerLine = ScaleRect(18, 518, 604, 1);
+        var footerLine = ScaleRect(18, 502, 554, 1);
         FillRect(hdc, footerLine, ColorRef(225, 232, 242));
+    }
+
+    private void DrawInputFrame(IntPtr hdc, int x, int y, int width, int height)
+    {
+        DrawRoundRect(hdc, x, y, width, height, 8, ColorRef(255, 255, 255), ColorRef(180, 194, 214));
     }
 
     private void DrawCard(IntPtr hdc, int x, int y, int width, int height, string title)
@@ -546,10 +554,9 @@ internal sealed class SettingsWindow
         var style = NativeMethods.WsChild |
                     NativeMethods.WsVisible |
                     NativeMethods.WsTabStop |
-                    NativeMethods.WsBorder |
                     NativeMethods.EsAutoHScroll |
                     (numbersOnly ? NativeMethods.EsNumber : 0);
-        var handle = CreateControl("EDIT", text, style, NativeMethods.WsExClientEdge, 0, x, y, width, height);
+        var handle = CreateControl("EDIT", text, style, 0, 0, x, y, width, height);
         SetControlFont(handle, _font);
         return handle;
     }
@@ -1065,6 +1072,12 @@ internal sealed class SettingsWindow
 
             case NativeMethods.WmEraseBkgnd:
                 return 1;
+
+            case NativeMethods.WmCtlColorEdit:
+                var editHdc = unchecked((IntPtr)(nint)wParam);
+                NativeMethods.SetTextColor(editHdc, ColorRef(15, 23, 42));
+                NativeMethods.SetBkColor(editHdc, ColorRef(255, 255, 255));
+                return NativeMethods.GetStockObject(NativeMethods.WhiteBrush);
 
             case NativeMethods.WmCtlColorStatic:
                 var staticHdc = unchecked((IntPtr)(nint)wParam);

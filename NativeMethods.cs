@@ -22,6 +22,7 @@ internal static unsafe partial class NativeMethods
     public const uint WmClose = 0x0010;
     public const uint WmEraseBkgnd = 0x0014;
     public const uint WmSetFont = 0x0030;
+    public const uint WmCtlColorEdit = 0x0133;
     public const uint WmCtlColorStatic = 0x0138;
     public const uint WmDestroy = 0x0002;
     public const uint WmActivate = 0x0006;
@@ -81,6 +82,7 @@ internal static unsafe partial class NativeMethods
     public const uint DtNoPrefix = 0x00000800;
     public const uint DtEndEllipsis = 0x00008000;
     public const int Transparent = 1;
+    public const int WhiteBrush = 0;
     public const int NullBrush = 5;
     public const int PsSolid = 0;
     public const int DefaultCharset = 1;
@@ -540,6 +542,9 @@ internal static unsafe partial class NativeMethods
 
     [DllImport("gdi32.dll", SetLastError = true)]
     public static extern uint SetTextColor(IntPtr hdc, uint color);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    public static extern uint SetBkColor(IntPtr hdc, uint color);
 
     [DllImport("gdi32.dll", SetLastError = true)]
     public static extern int SetBkMode(IntPtr hdc, int mode);
