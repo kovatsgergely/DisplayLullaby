@@ -68,7 +68,12 @@ internal static class Program
         {
             if (args.Length < 2)
             {
-                Console.Error.WriteLine("Missing monitor target. Use a monitor ID, DISPLAY name, 'primary', 'secondary', or 'all'.");
+                Console.Error.WriteLine("Missing monitor target. Use a DISPLAY name such as DISPLAY1, a monitor ID, or 'all'.");
+                return 2;
+            }
+
+            if (RejectRemovedRoleTarget(args[1]))
+            {
                 return 2;
             }
 
@@ -79,7 +84,12 @@ internal static class Program
         {
             if (args.Length < 2)
             {
-                Console.Error.WriteLine("Missing monitor target. Use a monitor ID, DISPLAY name, 'primary', 'secondary', or 'all'.");
+                Console.Error.WriteLine("Missing monitor target. Use a DISPLAY name such as DISPLAY1, a monitor ID, or 'all'.");
+                return 2;
+            }
+
+            if (RejectRemovedRoleTarget(args[1]))
+            {
                 return 2;
             }
 
@@ -90,7 +100,12 @@ internal static class Program
         {
             if (args.Length < 2)
             {
-                Console.Error.WriteLine("Missing monitor target. Use a monitor ID, DISPLAY name, 'primary', 'secondary', or 'all'.");
+                Console.Error.WriteLine("Missing monitor target. Use a DISPLAY name such as DISPLAY1, a monitor ID, or 'all'.");
+                return 2;
+            }
+
+            if (RejectRemovedRoleTarget(args[1]))
+            {
                 return 2;
             }
 
@@ -141,6 +156,20 @@ internal static class Program
         return MonitorPowerMode.Standby;
     }
 
+    private static bool RejectRemovedRoleTarget(string target)
+    {
+        if (!target.Equals("primary", StringComparison.OrdinalIgnoreCase) &&
+            !target.Equals("secondary", StringComparison.OrdinalIgnoreCase) &&
+            !target.Equals("non-primary", StringComparison.OrdinalIgnoreCase) &&
+            !target.Equals("nonprimary", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        Console.Error.WriteLine($"Target '{target}' is no longer supported. Use a DISPLAY name such as DISPLAY1.");
+        return true;
+    }
+
     private static void PrintUsage(TextWriter output)
     {
         output.WriteLine("DisplayLullaby");
@@ -149,9 +178,9 @@ internal static class Program
         output.WriteLine("  DisplayLullaby                 Run tray app");
         output.WriteLine("  DisplayLullaby tray            Run tray app");
         output.WriteLine("  DisplayLullaby list            List DDC/CI-capable physical monitors");
-        output.WriteLine("  DisplayLullaby sleep <target>  Sleep monitor ID, DISPLAY name, 'primary', 'secondary', or 'all'");
-        output.WriteLine("  DisplayLullaby toggle <target> Toggle monitor ID, DISPLAY name, 'primary', 'secondary', or 'all'");
-        output.WriteLine("  DisplayLullaby wake <target>   Wake monitor ID, DISPLAY name, 'primary', 'secondary', or 'all'");
+        output.WriteLine("  DisplayLullaby sleep <target>  Sleep DISPLAY name, monitor ID, or 'all'");
+        output.WriteLine("  DisplayLullaby toggle <target> Toggle DISPLAY name, monitor ID, or 'all'");
+        output.WriteLine("  DisplayLullaby wake <target>   Wake DISPLAY name, monitor ID, or 'all'");
         output.WriteLine("  DisplayLullaby global-off      Turn all monitors off using Windows");
         output.WriteLine("  DisplayLullaby config-path     Print tray hotkey config path");
         output.WriteLine();

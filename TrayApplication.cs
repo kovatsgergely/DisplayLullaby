@@ -397,6 +397,23 @@ internal sealed unsafe class TrayApplication
         return MonitorController.ChooseToggleMode(target, _config.SleepMode);
     }
 
+    private string FormatTemporaryStandbyMenu(bool primary)
+    {
+        var settings = _config.ToSettings();
+        var hotkey = primary ? settings.PrimaryStandbyHotkey : settings.SecondaryStandbyHotkey;
+        var target = TemporaryStandbyTarget(settings, primary);
+        return $"Temporary standby / wake {target} ({hotkey})";
+    }
+
+    private string TemporaryStandbyTarget(bool primary) => TemporaryStandbyTarget(_config.ToSettings(), primary);
+
+    private static string TemporaryStandbyTarget(AppSettings settings, bool primary)
+    {
+        var target = primary ? settings.PrimaryStandbyTarget : settings.SecondaryStandbyTarget;
+        target = target.Trim();
+        return target.Length > 0 ? target : primary ? "DISPLAY1" : "DISPLAY2";
+    }
+
     private void ShowContextMenu()
     {
         _helpPopup?.Hide();
@@ -413,8 +430,8 @@ internal sealed unsafe class TrayApplication
             NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuGlobalOff, "Turn all monitors off");
             NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
-            NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuTemporaryStandbyPrimary, "Temporary standby / wake primary (F10)");
-            NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuTemporaryStandbySecondary, "Temporary standby / wake secondary (F11)");
+            NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuTemporaryStandbyPrimary, FormatTemporaryStandbyMenu(primary: true));
+            NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuTemporaryStandbySecondary, FormatTemporaryStandbyMenu(primary: false));
             NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuReload, "Reload hotkeys");
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuExit, "Exit");
@@ -481,13 +498,13 @@ internal sealed unsafe class TrayApplication
 
         if (command == MenuTemporaryStandbyPrimary)
         {
-            Execute(TrayAction.TemporaryStandby, "primary");
+            Execute(TrayAction.TemporaryStandby, TemporaryStandbyTarget(primary: true));
             return;
         }
 
         if (command == MenuTemporaryStandbySecondary)
         {
-            Execute(TrayAction.TemporaryStandby, "secondary");
+            Execute(TrayAction.TemporaryStandby, TemporaryStandbyTarget(primary: false));
             return;
         }
 

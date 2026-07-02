@@ -52,8 +52,8 @@ internal sealed class AppConfig
         # Set TemporaryStandbyIdleMinutes=0 to disable the automatic handoff.
         TemporaryStandbyIdleMinutes=15
         TemporaryStandbyWakeDelaySeconds=4
-        Hotkey=F10 temporary-standby primary
-        Hotkey=F11 temporary-standby secondary
+        Hotkey=F10 temporary-standby DISPLAY1
+        Hotkey=F11 temporary-standby DISPLAY2
         """;
 
     private AppConfig(
@@ -100,7 +100,15 @@ internal sealed class AppConfig
             WriteInitialConfig(path);
         }
 
-        return Parse(File.ReadAllLines(path));
+        var migrated = MigrateRemovedRoleTargets(path);
+        var config = Parse(File.ReadAllLines(path));
+        if (migrated || ContainsRemovedRoleWording(File.ReadAllText(path)))
+        {
+            SaveSettings(config.ToSettings());
+            config = Parse(File.ReadAllLines(path));
+        }
+
+        return config;
     }
 
     public AppSettings ToSettings()
@@ -110,17 +118,17 @@ internal sealed class AppConfig
             .Where(static hotkey => hotkey.Action == TrayAction.TemporaryStandby)
             .ToArray();
 
-        var primary = temporaryHotkeys.FirstOrDefault(static hotkey => hotkey.Target.Equals("primary", StringComparison.OrdinalIgnoreCase))
+        var primary = temporaryHotkeys.FirstOrDefault(static hotkey => hotkey.Target.Equals("DISPLAY1", StringComparison.OrdinalIgnoreCase))
                       ?? temporaryHotkeys.FirstOrDefault();
-        var secondary = temporaryHotkeys.FirstOrDefault(static hotkey => hotkey.Target.Equals("secondary", StringComparison.OrdinalIgnoreCase))
+        var secondary = temporaryHotkeys.FirstOrDefault(static hotkey => hotkey.Target.Equals("DISPLAY2", StringComparison.OrdinalIgnoreCase))
                         ?? temporaryHotkeys.FirstOrDefault(hotkey => !ReferenceEquals(hotkey, primary));
 
         return new AppSettings(
             ExtractHotkeyText(global, "F9"),
             ExtractHotkeyText(primary, "F10"),
-            string.IsNullOrWhiteSpace(primary?.Target) ? "primary" : primary.Target,
+            NormalizeRemovedRoleTarget(string.IsNullOrWhiteSpace(primary?.Target) ? "DISPLAY1" : primary.Target),
             ExtractHotkeyText(secondary, "F11"),
-            string.IsNullOrWhiteSpace(secondary?.Target) ? "secondary" : secondary.Target,
+            NormalizeRemovedRoleTarget(string.IsNullOrWhiteSpace(secondary?.Target) ? "DISPLAY2" : secondary.Target),
             SleepMode,
             TemporaryStandbyIdleMinutes,
             TemporaryStandbyWakeDelaySeconds);
@@ -148,25 +156,25 @@ internal sealed class AppConfig
 
         if (!TryValidateHotkeyText(settings.PrimaryStandbyHotkey, out warning))
         {
-            warning = $"Primary standby hotkey: {warning}";
+            warning = $"F10 standby hotkey: {warning}";
             return false;
         }
 
         if (!TryValidateHotkeyText(settings.SecondaryStandbyHotkey, out warning))
         {
-            warning = $"Secondary standby hotkey: {warning}";
+            warning = $"F11 standby hotkey: {warning}";
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(settings.PrimaryStandbyTarget))
+        if (!TryValidateTargetText(settings.PrimaryStandbyTarget, out warning))
         {
-            warning = "Primary standby target cannot be empty.";
+            warning = $"F10 standby target: {warning}";
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(settings.SecondaryStandbyTarget))
+        if (!TryValidateTargetText(settings.SecondaryStandbyTarget, out warning))
         {
-            warning = "Secondary standby target cannot be empty.";
+            warning = $"F11 standby target: {warning}";
             return false;
         }
 
@@ -212,17 +220,105 @@ internal sealed class AppConfig
     private static string MigrateLegacyConfig(string configText) =>
         configText.Replace("MonitorSleep", "DisplayLullaby", StringComparison.Ordinal);
 
+    private static bool MigrateRemovedRoleTargets(string path)
+    {
+        var original = File.ReadAllText(path);
+        var primaryTarget = GetDetectedDisplayTarget(primary: true, "DISPLAY1");
+        var secondaryTarget = GetDetectedDisplayTarget(primary: false, "DISPLAY2");
+        var migratedLines = original
+            .Split(["\r\n", "\n"], StringSplitOptions.None)
+            .Select(line => MigrateRemovedRoleTargetLine(line, primaryTarget, secondaryTarget));
+        var migrated = string.Join(Environment.NewLine, migratedLines);
+
+        if (!migrated.Equals(original, StringComparison.Ordinal))
+        {
+            File.WriteAllText(path, migrated);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsRemovedRoleWording(string configText) =>
+        configText.Contains("current primary monitor", StringComparison.OrdinalIgnoreCase) ||
+        configText.Contains("current secondary monitor", StringComparison.OrdinalIgnoreCase) ||
+        configText.Contains("primary display", StringComparison.OrdinalIgnoreCase) ||
+        configText.Contains("secondary display", StringComparison.OrdinalIgnoreCase);
+
+    private static string MigrateRemovedRoleTargetLine(string line, string primaryTarget, string secondaryTarget)
+    {
+        var commentIndex = line.IndexOf('#');
+        var active = commentIndex < 0 ? line : line[..commentIndex];
+        var comment = commentIndex < 0 ? string.Empty : line[commentIndex..];
+        var splitAt = active.IndexOf('=');
+        if (splitAt < 0 || !active[..splitAt].Trim().Equals("Hotkey", StringComparison.OrdinalIgnoreCase))
+        {
+            return line;
+        }
+
+        var value = active[(splitAt + 1)..];
+        var leadingWhitespace = value.Length - value.TrimStart().Length;
+        var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 3 || !TryMapRemovedRoleTarget(parts[2], primaryTarget, secondaryTarget, out var replacement))
+        {
+            return line;
+        }
+
+        return string.Concat(
+            active[..(splitAt + 1)],
+            new string(' ', leadingWhitespace),
+            parts[0],
+            " ",
+            parts[1],
+            " ",
+            replacement,
+            comment);
+    }
+
+    private static string GetDetectedDisplayTarget(bool primary, string fallback) =>
+        MonitorController.TryGetRoleDisplayName(primary, out var displayName) ? displayName : fallback;
+
+    private static string NormalizeRemovedRoleTarget(string target)
+    {
+        if (TryMapRemovedRoleTarget(target, "DISPLAY1", "DISPLAY2", out var replacement))
+        {
+            return replacement;
+        }
+
+        return target;
+    }
+
+    private static bool TryMapRemovedRoleTarget(string target, string primaryReplacement, string secondaryReplacement, out string replacement)
+    {
+        if (target.Equals("primary", StringComparison.OrdinalIgnoreCase))
+        {
+            replacement = primaryReplacement;
+            return true;
+        }
+
+        if (target.Equals("secondary", StringComparison.OrdinalIgnoreCase) ||
+            target.Equals("non-primary", StringComparison.OrdinalIgnoreCase) ||
+            target.Equals("nonprimary", StringComparison.OrdinalIgnoreCase))
+        {
+            replacement = secondaryReplacement;
+            return true;
+        }
+
+        replacement = string.Empty;
+        return false;
+    }
+
     private static string BuildConfig(AppSettings settings)
     {
-        var primaryTarget = NormalizeConfigToken(settings.PrimaryStandbyTarget, "primary");
-        var secondaryTarget = NormalizeConfigToken(settings.SecondaryStandbyTarget, "secondary");
+        var primaryTarget = NormalizeConfigToken(settings.PrimaryStandbyTarget, "DISPLAY1");
+        var secondaryTarget = NormalizeConfigToken(settings.SecondaryStandbyTarget, "DISPLAY2");
 
         return $"""
             # DisplayLullaby tray configuration
             #
             # F9 uses the Windows global monitor-off command.
-            # F10 uses DDC/CI only as a temporary standby/wake toggle for the current primary monitor.
-            # F11 uses DDC/CI only as a temporary standby/wake toggle for the current secondary monitor.
+            # F10 uses DDC/CI only as a temporary standby/wake toggle for {primaryTarget}.
+            # F11 uses DDC/CI only as a temporary standby/wake toggle for {secondaryTarget}.
             # While temporary standby is active, the same hotkey again or any later keyboard/mouse input wakes the monitor and cancels handoff.
             # After the configured idle period, DisplayLullaby wakes that monitor, waits briefly, then uses F9-style global monitor-off.
             PowerMode={SerializePowerMode(settings.PowerMode)}
@@ -251,6 +347,25 @@ internal sealed class AppConfig
         return string.IsNullOrWhiteSpace(trimmed)
             ? fallback
             : trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0];
+    }
+
+    private static bool TryValidateTargetText(string text, out string warning)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0)
+        {
+            warning = "target cannot be empty.";
+            return false;
+        }
+
+        if (TryMapRemovedRoleTarget(trimmed, "DISPLAY1", "DISPLAY2", out _))
+        {
+            warning = $"'{trimmed}' is no longer supported; use a DISPLAY name such as DISPLAY1.";
+            return false;
+        }
+
+        warning = string.Empty;
+        return true;
     }
 
     private static string SerializePowerMode(MonitorPowerMode powerMode) =>
@@ -407,6 +522,11 @@ internal sealed class AppConfig
         }
 
         var target = parts[2];
+        if (!TryValidateTargetText(target, out warning))
+        {
+            return false;
+        }
+
         binding = new HotkeyBinding(id, modifiers, virtualKey, action, target, value);
         return true;
     }

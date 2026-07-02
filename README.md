@@ -33,13 +33,13 @@ Default hotkeys:
 
 ```text
 F9     turn all monitors off
-F10    temporary standby for the primary display until input
-F11    temporary standby for the secondary display until input
+F10    temporary standby for DISPLAY1 until input
+F11    temporary standby for DISPLAY2 until input
 ```
 
 Use Settings to capture new hotkeys, choose targets, change idle handoff timing, and save changes immediately. You can still edit the config file directly and choose **Reload hotkeys** from the tray menu.
 
-The temporary standby keys wake on the same hotkey, any later key press, or mouse movement. Config targets can be monitor IDs, `DISPLAY1` style device names, `primary`, `secondary`, `all`, or a description snippet like `Dell`. The `DISPLAYn` names are more stable than list IDs when a sleeping monitor temporarily disappears.
+The temporary standby keys wake on the same hotkey, any later key press, or mouse movement. Config targets should use `DISPLAY1` style device names; CLI commands also accept monitor IDs, `all`, or a description snippet like `Dell`. The `DISPLAYn` names are more stable than list IDs when a sleeping monitor temporarily disappears.
 
 F9 uses the Windows global monitor-off command. F10 and F11 use DDC/CI only for short temporary standby, then hand off to the Windows global monitor-off command after the configured idle period.
 

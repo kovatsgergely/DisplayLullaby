@@ -114,7 +114,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         _onClosed = onClosed;
 
         Title = "DisplayLullaby settings";
-        Width = 470;
+        Width = 520;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -150,8 +150,8 @@ internal sealed class AvaloniaSettingsWindow : Window
         _secondaryHotkeyButton = HotkeyButton(settings.SecondaryStandbyHotkey, () => StartCapture(CaptureTarget.Secondary));
 
         var targetOptions = BuildTargetOptions(settings.PrimaryStandbyTarget, settings.SecondaryStandbyTarget);
-        _primaryTargetCombo = Combo(targetOptions, settings.PrimaryStandbyTarget);
-        _secondaryTargetCombo = Combo(targetOptions, settings.SecondaryStandbyTarget);
+        _primaryTargetCombo = TargetCombo(targetOptions, settings.PrimaryStandbyTarget);
+        _secondaryTargetCombo = TargetCombo(targetOptions, settings.SecondaryStandbyTarget);
         _powerModeCombo = Combo(["Standby", "Suspend", "PowerOff", "SoftOff"], SerializePowerMode(settings.PowerMode));
 
         _idleMinutesTextBox = NumberBox(settings.TemporaryStandbyIdleMinutes.ToString(), 52);
@@ -268,9 +268,9 @@ internal sealed class AvaloniaSettingsWindow : Window
         {
             ColumnDefinitions =
             {
-                new ColumnDefinition(1.45, GridUnitType.Star),
+                new ColumnDefinition(1.2, GridUnitType.Star),
                 new ColumnDefinition(78, GridUnitType.Pixel),
-                new ColumnDefinition(154, GridUnitType.Pixel)
+                new ColumnDefinition(210, GridUnitType.Pixel)
             },
             RowDefinitions =
             {
@@ -287,8 +287,8 @@ internal sealed class AvaloniaSettingsWindow : Window
         AddCell(grid, HeaderText("Hotkey"), 0, 1);
         AddCell(grid, HeaderText("Target"), 0, 2);
         AddHotkeyRow(grid, 1, "All monitors off", _globalHotkeyButton, null);
-        AddHotkeyRow(grid, 2, "Primary standby", _primaryHotkeyButton, _primaryTargetCombo);
-        AddHotkeyRow(grid, 3, "Secondary standby", _secondaryHotkeyButton, _secondaryTargetCombo);
+        AddHotkeyRow(grid, 2, "DISPLAY1 standby", _primaryHotkeyButton, _primaryTargetCombo);
+        AddHotkeyRow(grid, 3, "DISPLAY2 standby", _secondaryHotkeyButton, _secondaryTargetCombo);
 
         return Card("Hotkeys", grid);
     }
@@ -366,8 +366,8 @@ internal sealed class AvaloniaSettingsWindow : Window
 
         AddCell(grid, _statusBox, 0, 0, columnSpan: 6);
 
-        var testPrimary = SecondaryButton("Test primary", () => TestTemporaryStandby(primary: true), 100);
-        var testSecondary = SecondaryButton("Test secondary", () => TestTemporaryStandby(primary: false), 118);
+        var testPrimary = SecondaryButton("Test DISPLAY1", () => TestTemporaryStandby(primary: true), 104);
+        var testSecondary = SecondaryButton("Test DISPLAY2", () => TestTemporaryStandby(primary: false), 104);
         var allOff = SecondaryButton("All off", TurnAllMonitorsOff, 64);
         allOff.Foreground = Brush(120, 53, 15);
         allOff.BorderBrush = Brush(245, 158, 11);
@@ -512,6 +512,19 @@ internal sealed class AvaloniaSettingsWindow : Window
         return combo;
     }
 
+    private static ComboBox TargetCombo(TargetOption[] items, string selected)
+    {
+        var combo = new ComboBox
+        {
+            ItemsSource = items,
+            SelectedItem = items.FirstOrDefault(item => item.Value.Equals(selected, StringComparison.OrdinalIgnoreCase)) ?? items.FirstOrDefault(),
+            MinHeight = 30,
+            FontSize = 12,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        return combo;
+    }
+
     private static TextBox NumberBox(string text, double width) =>
         new()
         {
@@ -557,8 +570,8 @@ internal sealed class AvaloniaSettingsWindow : Window
         ShowCaptureTooltip(target, target switch
         {
             CaptureTarget.Global => "Press a key for all monitors off.",
-            CaptureTarget.Primary => "Press a key for primary standby.",
-            CaptureTarget.Secondary => "Press a key for secondary standby.",
+            CaptureTarget.Primary => "Press a key for DISPLAY1 standby.",
+            CaptureTarget.Secondary => "Press a key for DISPLAY2 standby.",
             _ => "Press a key."
         });
         Focus();
@@ -736,8 +749,8 @@ internal sealed class AvaloniaSettingsWindow : Window
             return false;
         }
 
-        var primaryTarget = (_primaryTargetCombo.SelectedItem as string ?? _settings.PrimaryStandbyTarget).Trim();
-        var secondaryTarget = (_secondaryTargetCombo.SelectedItem as string ?? _settings.SecondaryStandbyTarget).Trim();
+        var primaryTarget = SelectedTargetValue(_primaryTargetCombo, _settings.PrimaryStandbyTarget);
+        var secondaryTarget = SelectedTargetValue(_secondaryTargetCombo, _settings.SecondaryStandbyTarget);
         var powerMode = ParsePowerMode(_powerModeCombo.SelectedItem as string ?? SerializePowerMode(_settings.PowerMode));
 
         settings = _settings with
@@ -755,17 +768,17 @@ internal sealed class AvaloniaSettingsWindow : Window
     private void TestTemporaryStandby(bool primary)
     {
         EndCapture(resumeHotkeys: true);
-        var target = (primary
-            ? _primaryTargetCombo.SelectedItem as string ?? _settings.PrimaryStandbyTarget
-            : _secondaryTargetCombo.SelectedItem as string ?? _settings.SecondaryStandbyTarget).Trim();
+        var target = primary
+            ? SelectedTargetValue(_primaryTargetCombo, _settings.PrimaryStandbyTarget)
+            : SelectedTargetValue(_secondaryTargetCombo, _settings.SecondaryStandbyTarget);
 
         if (target.Length == 0)
         {
-            target = primary ? "primary" : "secondary";
+            target = primary ? "DISPLAY1" : "DISPLAY2";
         }
 
         _executeCommand(TrayAction.TemporaryStandby, target);
-        SetStatus(primary ? "Primary standby command sent." : "Secondary standby command sent.");
+        SetStatus(primary ? "DISPLAY1 standby command sent." : "DISPLAY2 standby command sent.");
     }
 
     private void TurnAllMonitorsOff()
@@ -775,27 +788,34 @@ internal sealed class AvaloniaSettingsWindow : Window
         SetStatus("Global monitor-off command sent.");
     }
 
-    private static string[] BuildTargetOptions(params string[] currentValues)
+    private static TargetOption[] BuildTargetOptions(params string[] currentValues)
     {
-        var options = new List<string> { "primary", "secondary" };
-
-        foreach (var value in currentValues)
-        {
-            AddOption(options, value);
-        }
+        var options = new List<TargetOption>();
 
         try
         {
             using var session = MonitorController.OpenSession();
             foreach (var target in session.Targets)
             {
-                AddOption(options, TrimDeviceName(target.DeviceName));
-                AddOption(options, target.Id.ToString());
+                var value = MonitorController.TrimDeviceName(target.DeviceName);
+                var role = target.IsPrimary ? " (primary)" : string.Empty;
+                AddOption(options, value, $"{value} - {target.Description}{role}");
             }
         }
         catch
         {
-            // The settings UI can still edit existing logical targets if DDC/CI enumeration fails.
+            // The settings UI can still edit existing DISPLAY targets if DDC/CI enumeration fails.
+        }
+
+        foreach (var value in currentValues)
+        {
+            AddOption(options, value, value);
+        }
+
+        if (options.Count == 0)
+        {
+            AddOption(options, "DISPLAY1", "DISPLAY1");
+            AddOption(options, "DISPLAY2", "DISPLAY2");
         }
 
         return options.ToArray();
@@ -813,7 +833,12 @@ internal sealed class AvaloniaSettingsWindow : Window
 
             return session.Targets
                 .Take(3)
-                .Select(target => $"{TrimDeviceName(target.DeviceName)}  {(target.IsPrimary ? "primary" : "display")}  {target.Description}")
+                .Select(target =>
+                {
+                    var deviceName = MonitorController.TrimDeviceName(target.DeviceName);
+                    var role = target.IsPrimary ? " (primary)" : string.Empty;
+                    return $"{deviceName}{role}  {target.Description}";
+                })
                 .ToArray();
         }
         catch
@@ -822,19 +847,22 @@ internal sealed class AvaloniaSettingsWindow : Window
         }
     }
 
-    private static void AddOption(List<string> options, string value)
+    private static void AddOption(List<TargetOption> options, string value, string label)
     {
         var trimmed = value.Trim();
-        if (trimmed.Length > 0 && !options.Any(option => option.Equals(trimmed, StringComparison.OrdinalIgnoreCase)))
+        if (trimmed.Length > 0 && !options.Any(option => option.Value.Equals(trimmed, StringComparison.OrdinalIgnoreCase)))
         {
-            options.Add(trimmed);
+            options.Add(new TargetOption(trimmed, label.Trim()));
         }
     }
 
-    private static string TrimDeviceName(string deviceName) =>
-        deviceName.StartsWith(@"\\.\", StringComparison.Ordinal)
-            ? deviceName[4..]
-            : deviceName;
+    private static string SelectedTargetValue(ComboBox combo, string fallback) =>
+        combo.SelectedItem switch
+        {
+            TargetOption option => option.Value.Trim(),
+            string text => text.Trim(),
+            _ => fallback.Trim()
+        };
 
     private static string SerializePowerMode(MonitorPowerMode mode) =>
         mode switch
@@ -951,5 +979,10 @@ internal sealed class AvaloniaSettingsWindow : Window
         Global,
         Primary,
         Secondary
+    }
+
+    private sealed record TargetOption(string Value, string Label)
+    {
+        public override string ToString() => Label;
     }
 }

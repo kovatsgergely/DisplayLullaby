@@ -141,6 +141,31 @@ internal static unsafe class MonitorController
         return 0;
     }
 
+    public static bool TryGetRoleDisplayName(bool primary, out string displayName)
+    {
+        displayName = string.Empty;
+
+        try
+        {
+            using var session = OpenSession();
+            var target = primary
+                ? session.Targets.FirstOrDefault(static candidate => candidate.IsPrimary)
+                : session.Targets.FirstOrDefault(static candidate => !candidate.IsPrimary);
+
+            if (target is null)
+            {
+                return false;
+            }
+
+            displayName = TrimDeviceName(target.DeviceName);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static int ApplyPowerMode(string targetText, MonitorPowerMode mode, TextWriter output)
     {
         using var session = OpenSession();
@@ -340,18 +365,6 @@ internal static unsafe class MonitorController
             return targets;
         }
 
-        if (targetText.Equals("primary", StringComparison.OrdinalIgnoreCase))
-        {
-            return targets.Where(static target => target.IsPrimary);
-        }
-
-        if (targetText.Equals("secondary", StringComparison.OrdinalIgnoreCase) ||
-            targetText.Equals("non-primary", StringComparison.OrdinalIgnoreCase) ||
-            targetText.Equals("nonprimary", StringComparison.OrdinalIgnoreCase))
-        {
-            return targets.Where(static target => !target.IsPrimary);
-        }
-
         if (int.TryParse(targetText, out var id))
         {
             return targets.Where(target => target.Id == id);
@@ -363,14 +376,17 @@ internal static unsafe class MonitorController
     private static bool MatchesNamedTarget(DisplayTarget target, string targetText)
     {
         var trimmedTarget = targetText.Trim();
-        var normalizedDeviceName = target.DeviceName.StartsWith(@"\\.\", StringComparison.Ordinal)
-            ? target.DeviceName[4..]
-            : target.DeviceName;
+        var normalizedDeviceName = TrimDeviceName(target.DeviceName);
 
         return target.DeviceName.Equals(trimmedTarget, StringComparison.OrdinalIgnoreCase) ||
                normalizedDeviceName.Equals(trimmedTarget, StringComparison.OrdinalIgnoreCase) ||
                target.Description.Contains(trimmedTarget, StringComparison.OrdinalIgnoreCase);
     }
+
+    public static string TrimDeviceName(string deviceName) =>
+        deviceName.StartsWith(@"\\.\", StringComparison.Ordinal)
+            ? deviceName[4..]
+            : deviceName;
 
     private static bool EnumerateLogicalMonitor(IntPtr hMonitor, IntPtr hdcMonitor, ref NativeMethods.Rect lprcMonitor, IntPtr dwData)
     {
