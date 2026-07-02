@@ -18,8 +18,8 @@ internal sealed class SettingsWindow
     private const int IdChooseSecondaryTarget = 1302;
     private const int IdChoosePowerMode = 1303;
     private const int SelectorMenuBase = 40000;
-    private const int ClientWidth = 590;
-    private const int ClientHeight = 560;
+    private const int ClientWidth = 520;
+    private const int ClientHeight = 446;
 
     private static readonly NativeMethods.WndProc WindowProc = WndProc;
     private static SettingsWindow? _current;
@@ -100,7 +100,7 @@ internal sealed class SettingsWindow
         _hwnd = NativeMethods.CreateWindowEx(
             0,
             ClassName,
-            string.Empty,
+            "DisplayLullaby settings",
             NativeMethods.WsOverlappedWindow,
             x,
             y,
@@ -117,7 +117,7 @@ internal sealed class SettingsWindow
             throw new InvalidOperationException($"Could not create settings window: {NativeMethods.LastErrorMessage()}");
         }
 
-        NativeMethods.SetWindowText(_hwnd, string.Empty);
+        NativeMethods.SetWindowText(_hwnd, "DisplayLullaby settings");
         CreateControls();
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SwShow);
         NativeMethods.SetForegroundWindow(_hwnd);
@@ -155,7 +155,7 @@ internal sealed class SettingsWindow
     private void CreateFonts()
     {
         _font = NativeMethods.CreateFont(
-            -Scale(12),
+            -Scale(10),
             0,
             0,
             0,
@@ -171,7 +171,7 @@ internal sealed class SettingsWindow
             "Segoe UI");
 
         _titleFont = NativeMethods.CreateFont(
-            -Scale(20),
+            -Scale(16),
             0,
             0,
             0,
@@ -187,7 +187,7 @@ internal sealed class SettingsWindow
             "Segoe UI");
 
         _sectionFont = NativeMethods.CreateFont(
-            -Scale(12),
+            -Scale(10),
             0,
             0,
             0,
@@ -203,7 +203,7 @@ internal sealed class SettingsWindow
             "Segoe UI");
 
         _smallFont = NativeMethods.CreateFont(
-            -Scale(10),
+            -Scale(9),
             0,
             0,
             0,
@@ -261,41 +261,41 @@ internal sealed class SettingsWindow
 
     private void CreateControls()
     {
-        CreateLabel("Command", 42, 134, 150, 20, _smallFont);
-        CreateLabel("Hotkey", 240, 134, 90, 20, _smallFont);
-        CreateLabel("Target", 352, 134, 110, 20, _smallFont);
+        CreateLabel("Command", 38, 102, 130, 18, _smallFont);
+        CreateLabel("Hotkey", 216, 102, 76, 18, _smallFont);
+        CreateLabel("Target", 318, 102, 100, 18, _smallFont);
 
-        CreateLabel("All monitors off", 42, 162, 170, 26);
-        _globalHotkeyButton = CreateButton(_settings.GlobalOffHotkey, IdCaptureGlobal, 240, 156, 90, 34);
+        CreateLabel("All monitors off", 38, 128, 150, 22);
+        _globalHotkeyButton = CreateButton(_settings.GlobalOffHotkey, IdCaptureGlobal, 216, 124, 74, 26);
 
-        CreateLabel("Primary standby", 42, 204, 170, 26);
-        _primaryHotkeyButton = CreateButton(_settings.PrimaryStandbyHotkey, IdCapturePrimary, 240, 198, 90, 34);
-        _primaryTargetButton = CreateButton(_settings.PrimaryStandbyTarget, IdChoosePrimaryTarget, 352, 198, 190, 34);
+        CreateLabel("Primary standby", 38, 159, 150, 22);
+        _primaryHotkeyButton = CreateButton(_settings.PrimaryStandbyHotkey, IdCapturePrimary, 216, 155, 74, 26);
+        _primaryTargetButton = CreateButton(_settings.PrimaryStandbyTarget, IdChoosePrimaryTarget, 318, 155, 154, 26);
 
-        CreateLabel("Secondary standby", 42, 246, 170, 26);
-        _secondaryHotkeyButton = CreateButton(_settings.SecondaryStandbyHotkey, IdCaptureSecondary, 240, 240, 90, 34);
-        _secondaryTargetButton = CreateButton(_settings.SecondaryStandbyTarget, IdChooseSecondaryTarget, 352, 240, 190, 34);
+        CreateLabel("Secondary standby", 38, 190, 150, 22);
+        _secondaryHotkeyButton = CreateButton(_settings.SecondaryStandbyHotkey, IdCaptureSecondary, 216, 186, 74, 26);
+        _secondaryTargetButton = CreateButton(_settings.SecondaryStandbyTarget, IdChooseSecondaryTarget, 318, 186, 154, 26);
 
-        CreateLabel("DDC mode", 42, 342, 88, 26);
-        _powerModeButton = CreateButton(SerializePowerMode(_settings.PowerMode), IdChoosePowerMode, 132, 336, 112, 34);
+        CreateLabel("DDC mode", 38, 250, 72, 22);
+        _powerModeButton = CreateButton(SerializePowerMode(_settings.PowerMode), IdChoosePowerMode, 112, 246, 96, 26);
 
-        CreateLabel("Idle", 272, 342, 38, 26);
-        _idleMinutesEdit = CreateEdit(_settings.TemporaryStandbyIdleMinutes.ToString(), 338, 343, 32, 22, numbersOnly: true);
-        CreateLabel("min", 394, 343, 34, 22, _smallFont);
+        CreateLabel("Idle", 226, 250, 32, 22);
+        _idleMinutesEdit = CreateEdit(_settings.TemporaryStandbyIdleMinutes.ToString(), 268, 249, 28, 18, numbersOnly: true);
+        CreateLabel("min", 304, 250, 28, 20, _smallFont);
 
-        CreateLabel("Wake", 420, 342, 46, 26);
-        _wakeDelayEdit = CreateEdit(_settings.TemporaryStandbyWakeDelaySeconds.ToString(), 466, 343, 28, 22, numbersOnly: true);
-        CreateLabel("sec", 518, 343, 30, 22, _smallFont);
+        CreateLabel("Wake", 354, 250, 42, 22);
+        _wakeDelayEdit = CreateEdit(_settings.TemporaryStandbyWakeDelaySeconds.ToString(), 402, 249, 24, 18, numbersOnly: true);
+        CreateLabel("sec", 434, 250, 26, 20, _smallFont);
 
-        CreateLabel(BuildDisplaySummary(), 42, 432, 500, 38, _smallFont);
+        CreateLabel(BuildDisplaySummary(), 38, 324, 440, 34, _smallFont);
 
-        _statusLabel = CreateLabel("Ready.", 22, 480, 340, 22, _smallFont);
+        _statusLabel = CreateLabel("Ready.", 18, 366, 290, 18, _smallFont);
 
-        CreateButton("Test primary", IdTestPrimary, 22, 514, 104, 34);
-        CreateButton("Test secondary", IdTestSecondary, 136, 514, 116, 34);
-        CreateButton("All off", IdTurnAllOff, 262, 514, 74, 34);
-        CreateButton("Save", IdSave, 416, 514, 70, 34, defaultButton: true);
-        CreateButton("Cancel", IdCancel, 496, 514, 70, 34);
+        CreateButton("Test primary", IdTestPrimary, 18, 400, 86, 28);
+        CreateButton("Test secondary", IdTestSecondary, 112, 400, 100, 28);
+        CreateButton("All off", IdTurnAllOff, 220, 400, 62, 28);
+        CreateButton("Save", IdSave, 360, 400, 62, 28, defaultButton: true);
+        CreateButton("Cancel", IdCancel, 430, 400, 70, 28);
     }
 
     private void PaintWindow()
@@ -316,47 +316,54 @@ internal sealed class SettingsWindow
         NativeMethods.GetClientRect(_hwnd, out var clientRect);
         FillRect(hdc, clientRect, ColorRef(246, 248, 252));
 
-        var headerRect = ScaleRect(0, 0, 590, 78);
+        var headerRect = ScaleRect(0, 0, 520, 60);
         FillRect(hdc, headerRect, ColorRef(238, 245, 253));
 
-        DrawRoundRect(hdc, 22, 16, 44, 44, 13, ColorRef(37, 99, 235), ColorRef(30, 64, 175));
-        DrawMonitorGlyph(hdc, 34, 29);
+        DrawRoundRect(hdc, 18, 13, 34, 34, 8, ColorRef(37, 99, 235), ColorRef(30, 64, 175));
+        DrawMonitorGlyph(hdc, 26, 22, 0.72);
 
-        DrawTextLine(hdc, "DisplayLullaby settings", 84, 16, 370, 30, _titleFont, ColorRef(15, 23, 42));
-        DrawTextLine(hdc, "Hotkeys, standby handoff, and display targets", 86, 47, 370, 22, _font, ColorRef(71, 94, 131));
+        DrawTextLine(hdc, "DisplayLullaby settings", 64, 11, 330, 24, _titleFont, ColorRef(15, 23, 42));
+        DrawTextLine(hdc, "Hotkeys, standby handoff, and display targets", 65, 34, 330, 18, _smallFont, ColorRef(71, 94, 131));
 
-        DrawCard(hdc, 18, 94, 554, 188, "Hotkeys");
-        DrawCard(hdc, 18, 298, 554, 76, "Standby behavior");
-        DrawInputFrame(hdc, 328, 336, 54, 34);
-        DrawInputFrame(hdc, 456, 336, 48, 34);
-        DrawCard(hdc, 18, 390, 554, 76, "Detected displays");
+        DrawCard(hdc, 16, 72, 488, 148, "Hotkeys");
+        DrawCard(hdc, 16, 232, 488, 54, "Standby behavior");
+        DrawInputFrame(hdc, 260, 246, 44, 26);
+        DrawInputFrame(hdc, 394, 246, 40, 26);
+        DrawCard(hdc, 16, 298, 488, 64, "Detected displays");
 
-        var footerLine = ScaleRect(18, 502, 554, 1);
+        var footerLine = ScaleRect(16, 388, 488, 1);
         FillRect(hdc, footerLine, ColorRef(225, 232, 242));
     }
 
     private void DrawInputFrame(IntPtr hdc, int x, int y, int width, int height)
     {
-        DrawRoundRect(hdc, x, y, width, height, 8, ColorRef(255, 255, 255), ColorRef(180, 194, 214));
+        DrawRoundRect(hdc, x, y, width, height, 6, ColorRef(255, 255, 255), ColorRef(194, 205, 221));
     }
 
     private void DrawCard(IntPtr hdc, int x, int y, int width, int height, string title)
     {
-        DrawRoundRect(hdc, x, y, width, height, 16, ColorRef(255, 255, 255), ColorRef(215, 226, 240));
-        DrawTextLine(hdc, title, x + 20, y + 12, width - 40, 22, _sectionFont, ColorRef(32, 55, 83));
+        DrawRoundRect(hdc, x, y, width, height, 10, ColorRef(255, 255, 255), ColorRef(218, 228, 240));
+        DrawTextLine(hdc, title, x + 18, y + 10, width - 36, 18, _sectionFont, ColorRef(32, 55, 83));
     }
 
     private void DrawMonitorGlyph(IntPtr hdc, int x, int y)
     {
-        var pen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(2), ColorRef(255, 255, 255));
+        DrawMonitorGlyph(hdc, x, y, 1.0);
+    }
+
+    private void DrawMonitorGlyph(IntPtr hdc, int x, int y, double scale)
+    {
+        var pen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(Math.Max(1, (int)Math.Round(2 * scale))), ColorRef(255, 255, 255));
         var brush = NativeMethods.CreateSolidBrush(ColorRef(219, 234, 254));
         var oldPen = NativeMethods.SelectObject(hdc, pen);
         var oldBrush = NativeMethods.SelectObject(hdc, brush);
 
-        NativeMethods.RoundRect(hdc, Scale(x), Scale(y), Scale(x + 21), Scale(y + 16), Scale(4), Scale(4));
-        var standRect = ScaleRect(x + 8, y + 18, 5, 6);
+        var screenWidth = (int)Math.Round(21 * scale);
+        var screenHeight = (int)Math.Round(16 * scale);
+        NativeMethods.RoundRect(hdc, Scale(x), Scale(y), Scale(x + screenWidth), Scale(y + screenHeight), Scale(4), Scale(4));
+        var standRect = ScaleRect(x + (int)Math.Round(8 * scale), y + (int)Math.Round(18 * scale), Math.Max(3, (int)Math.Round(5 * scale)), Math.Max(4, (int)Math.Round(6 * scale)));
         FillRect(hdc, standRect, ColorRef(255, 255, 255));
-        var footRect = ScaleRect(x + 4, y + 25, 14, 3);
+        var footRect = ScaleRect(x + (int)Math.Round(4 * scale), y + (int)Math.Round(25 * scale), Math.Max(9, (int)Math.Round(14 * scale)), Math.Max(2, (int)Math.Round(3 * scale)));
         FillRect(hdc, footRect, ColorRef(255, 255, 255));
 
         NativeMethods.SelectObject(hdc, oldBrush);
@@ -419,13 +426,13 @@ internal sealed class SettingsWindow
 
         var fill = isPrimary ? ColorRef(37, 99, 235)
             : isDanger ? ColorRef(255, 251, 235)
-            : isHotkey ? ColorRef(239, 246, 255)
+            : isHotkey ? ColorRef(248, 251, 255)
             : isSelector ? ColorRef(255, 255, 255)
             : ColorRef(255, 255, 255);
         var border = isPrimary ? ColorRef(29, 78, 216)
             : isDanger ? ColorRef(245, 158, 11)
-            : isHotkey ? ColorRef(147, 197, 253)
-            : isSelector ? ColorRef(148, 163, 184)
+            : isHotkey ? ColorRef(168, 198, 235)
+            : isSelector ? ColorRef(176, 190, 210)
             : ColorRef(203, 213, 225);
         var textColor = isPrimary ? ColorRef(255, 255, 255)
             : isDanger ? ColorRef(120, 53, 15)
@@ -436,12 +443,12 @@ internal sealed class SettingsWindow
         {
             fill = isPrimary ? ColorRef(29, 78, 216)
                 : isDanger ? ColorRef(254, 243, 199)
-                : isHotkey ? ColorRef(219, 234, 254)
+                : isHotkey ? ColorRef(236, 244, 255)
                 : isSelector ? ColorRef(248, 250, 252)
                 : ColorRef(241, 245, 249);
         }
 
-        DrawRoundRectRaw(item.hDC, item.rcItem, Scale(10), fill, border);
+        DrawRoundRectRaw(item.hDC, item.rcItem, Scale(isPrimary ? 7 : 6), fill, border);
         var textRect = item.rcItem;
         if (isPressed)
         {
@@ -462,10 +469,16 @@ internal sealed class SettingsWindow
 
     private void DrawSelectorChevron(IntPtr hdc, NativeMethods.Rect rect)
     {
-        var arrowRect = rect;
-        arrowRect.Left = rect.Right - Scale(28);
-        arrowRect.Right = rect.Right - Scale(8);
-        DrawCenteredText(hdc, "v", arrowRect, _smallFont, ColorRef(71, 85, 105));
+        var pen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(1), ColorRef(71, 85, 105));
+        var oldPen = NativeMethods.SelectObject(hdc, pen);
+        var centerX = rect.Right - Scale(15);
+        var centerY = rect.Top + (rect.Height / 2) + Scale(1);
+        var size = Scale(4);
+        NativeMethods.MoveToEx(hdc, centerX - size, centerY - (size / 2), out _);
+        NativeMethods.LineTo(hdc, centerX, centerY + (size / 2));
+        NativeMethods.LineTo(hdc, centerX + size, centerY - (size / 2));
+        NativeMethods.SelectObject(hdc, oldPen);
+        NativeMethods.DeleteObject(pen);
     }
 
     private void DrawRoundRectRaw(IntPtr hdc, NativeMethods.Rect rect, int radius, uint fillColor, uint borderColor)
@@ -503,8 +516,8 @@ internal sealed class SettingsWindow
 
     private void DrawTextLineRaw(IntPtr hdc, string text, NativeMethods.Rect rect, IntPtr font, uint color)
     {
-        rect.Left += Scale(12);
-        rect.Right -= Scale(28);
+        rect.Left += Scale(10);
+        rect.Right -= Scale(26);
         var oldFont = font == IntPtr.Zero ? IntPtr.Zero : NativeMethods.SelectObject(hdc, font);
         NativeMethods.SetBkMode(hdc, NativeMethods.Transparent);
         NativeMethods.SetTextColor(hdc, color);

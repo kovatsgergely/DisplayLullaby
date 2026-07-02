@@ -566,6 +566,14 @@ internal static unsafe partial class NativeMethods
 
     [DllImport("gdi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool MoveToEx(IntPtr hdc, int x, int y, out Point lppt);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool LineTo(IntPtr hdc, int x, int y);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool RoundRect(IntPtr hdc, int left, int top, int right, int bottom, int width, int height);
 
     public static string ReadFixedString(ushort* value, int maxChars)
