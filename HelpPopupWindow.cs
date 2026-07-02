@@ -312,7 +312,7 @@ internal sealed class AvaloniaHelpPopupWindow : Window
 
         var icon = new Image
         {
-            Source = LoadBitmapAsset("avares://DisplayLullaby/Assets/settings.png"),
+            Source = LoadBitmapAsset("avares://DisplayLullaby/Assets/DisplayLullaby.png"),
             Width = 38,
             Height = 38,
             Stretch = Stretch.Uniform,
