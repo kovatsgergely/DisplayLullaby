@@ -602,6 +602,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         }
 
         ToolTip.SetIsOpen(_captureTooltipButton, false);
+        ToolTip.SetTip(_captureTooltipButton, null);
         _captureTooltipButton = null;
     }
 
