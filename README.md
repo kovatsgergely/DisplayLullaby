@@ -61,7 +61,7 @@ Some monitors accept only one of these sleep/off values, so try another option i
 
 ## Building
 
-The app version lives in `Version.props`.
+The app version prefix lives in `Version.props`. Release scripts fetch `origin/main`, count its commits, and build `DisplayLullabyVersionPrefix.<commit-count>`.
 
 Create the signed release build:
 

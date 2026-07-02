@@ -1,6 +1,8 @@
 <Project>
   <PropertyGroup>
-    <DisplayLullabyVersion>0.1.0</DisplayLullabyVersion>
+    <DisplayLullabyVersionPrefix>0.1</DisplayLullabyVersionPrefix>
+    <DisplayLullabyCommitCount Condition="'$(DisplayLullabyCommitCount)' == ''">0</DisplayLullabyCommitCount>
+    <DisplayLullabyVersion>$(DisplayLullabyVersionPrefix).$(DisplayLullabyCommitCount)</DisplayLullabyVersion>
     <Version>$(DisplayLullabyVersion)</Version>
     <AssemblyVersion>$(DisplayLullabyVersion).0</AssemblyVersion>
     <FileVersion>$(DisplayLullabyVersion).0</FileVersion>

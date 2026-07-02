@@ -1,5 +1,6 @@
 param(
-    [string]$CertificateSubject = 'CN=DisplayLullaby'
+    [string]$CertificateSubject = 'CN=DisplayLullaby',
+    [int]$DisplayLullabyCommitCount = -1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,9 +10,14 @@ $projectPath = Join-Path $projectRoot 'DisplayLullaby.csproj'
 $releaseDir = Join-Path $projectRoot 'Release'
 $exePath = Join-Path $releaseDir 'DisplayLullaby.exe'
 
+. (Join-Path $projectRoot 'Get-ReleaseVersion.ps1')
+$releaseVersion = Get-DisplayLullabyReleaseVersion -ProjectRoot $projectRoot -CommitCount $DisplayLullabyCommitCount
+
 New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
 
-dotnet publish $projectPath -c Release -r win-x64 "-p:PublishDir=$releaseDir\"
+Write-Host "Publishing DisplayLullaby $($releaseVersion.Version) from GitHub main commit count $($releaseVersion.CommitCount)."
+
+dotnet publish $projectPath -c Release -r win-x64 "-p:PublishDir=$releaseDir\" "-p:DisplayLullabyCommitCount=$($releaseVersion.CommitCount)"
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE."
 }

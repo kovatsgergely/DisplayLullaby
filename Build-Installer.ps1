@@ -5,27 +5,23 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = $PSScriptRoot
-$versionPropsPath = Join-Path $projectRoot 'Version.props'
 $installerProjectPath = Join-Path $projectRoot 'Installer\DisplayLullaby.Installer.wixproj'
 $releaseDir = Join-Path $projectRoot 'Release'
 
-[xml]$versionProps = Get-Content -Path $versionPropsPath
-$version = $versionProps.Project.PropertyGroup.DisplayLullabyVersion
-if ([string]::IsNullOrWhiteSpace($version)) {
-    throw "DisplayLullabyVersion was not found in $versionPropsPath."
-}
+. (Join-Path $projectRoot 'Get-ReleaseVersion.ps1')
+$releaseVersion = Get-DisplayLullabyReleaseVersion -ProjectRoot $projectRoot
 
-& (Join-Path $projectRoot 'Publish-Release.ps1') -CertificateSubject $CertificateSubject
+& (Join-Path $projectRoot 'Publish-Release.ps1') -CertificateSubject $CertificateSubject -DisplayLullabyCommitCount $releaseVersion.CommitCount
 if ($LASTEXITCODE -ne 0) {
     throw "Publish-Release.ps1 failed with exit code $LASTEXITCODE."
 }
 
-dotnet build $installerProjectPath -c Release
+dotnet build $installerProjectPath -c Release "-p:DisplayLullabyCommitCount=$($releaseVersion.CommitCount)"
 if ($LASTEXITCODE -ne 0) {
     throw "MSI build failed with exit code $LASTEXITCODE."
 }
 
-$msiPath = Join-Path $releaseDir "DisplayLullaby-$version-x64.msi"
+$msiPath = Join-Path $releaseDir "DisplayLullaby-$($releaseVersion.Version)-x64.msi"
 if (-not (Test-Path -LiteralPath $msiPath)) {
     throw "Expected MSI was not produced: $msiPath"
 }
