@@ -1,0 +1,11 @@
+bin/
+obj/
+Release/
+.vs/
+.idea/
+*.user
+*.suo
+*.pfx
+*.pfx.password.txt
+*.password.txt
+*.snk
