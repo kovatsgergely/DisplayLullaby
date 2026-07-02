@@ -1,4 +1,11 @@
 using System.Runtime.InteropServices;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 
 namespace DisplayLullaby;
 
@@ -8,121 +15,86 @@ internal sealed record HelpHotkeyRow(string Key, string Description);
 
 internal sealed record HelpPopupContent(IReadOnlyList<HelpDisplayRow> Displays, IReadOnlyList<HelpHotkeyRow> Hotkeys);
 
-internal sealed unsafe class HelpPopupWindow
+internal sealed class HelpPopupWindow
 {
-    private const string ClassName = "DisplayLullabyHelpPopup";
     private const int DesignDpi = 96;
-    private const int WidthDips = 390;
-    private const int KeyPillWidthDips = 48;
-    private const int KeyPillHeightDips = 22;
-    private static readonly NativeMethods.WndProc PopupWndProc = WndProc;
-    private static HelpPopupWindow? _current;
+    private const int WidthDips = 500;
+    private AvaloniaHelpPopupWindow? _window;
+    private int _isVisible;
 
-    private IntPtr _hwnd;
-    private IntPtr _owner;
-    private HelpPopupContent _content = new(Array.Empty<HelpDisplayRow>(), Array.Empty<HelpHotkeyRow>());
-    private double _scale = 1.0;
-
-    public HelpPopupWindow()
-    {
-        _current = this;
-    }
-
-    public bool IsVisible { get; private set; }
+    public bool IsVisible => Volatile.Read(ref _isVisible) != 0;
 
     public DateTime LastHiddenUtc { get; private set; } = DateTime.MinValue;
 
     public void Show(IntPtr owner, HelpPopupContent content)
     {
-        _owner = owner;
-        _content = content;
-        EnsureWindow();
-        UpdateDpiScale();
+        AvaloniaUiHost.Invoke(() =>
+        {
+            _window ??= new AvaloniaHelpPopupWindow(MarkHidden);
+            _window.UpdateContent(content);
+            _window.PrepareToShow();
 
-        var width = Scale(WidthDips);
-        var height = Scale(CalculateHeightDips(content));
-        var position = CalculatePosition(width, height);
+            var heightDips = CalculateHeightDips(content);
+            var scale = GetCursorScale();
+            var widthPixels = Scale(WidthDips, scale);
+            var heightPixels = Scale(heightDips, scale);
+            var position = CalculatePosition(widthPixels, heightPixels);
 
-        NativeMethods.SetWindowPos(
-            _hwnd,
-            NativeMethods.HwndTopMost,
-            position.X,
-            position.Y,
-            width,
-            height,
-            NativeMethods.SwpShowWindow);
+            _window.Width = WidthDips;
+            _window.Height = heightDips;
+            _window.Position = new PixelPoint(position.X, position.Y);
 
-        NativeMethods.ShowWindow(_hwnd, NativeMethods.SwShow);
-        NativeMethods.SetForegroundWindow(_hwnd);
-        NativeMethods.SetFocus(_hwnd);
-        NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, true);
-        IsVisible = true;
+            Volatile.Write(ref _isVisible, 1);
+            if (!_window.IsVisible)
+            {
+                _window.Show();
+            }
+
+            _window.Activate();
+        });
     }
 
     public void Hide()
     {
-        if (!IsVisible && _hwnd == IntPtr.Zero)
+        if (!IsVisible && _window is null)
         {
             return;
         }
 
-        if (_hwnd != IntPtr.Zero)
+        AvaloniaUiHost.Invoke(() =>
         {
-            NativeMethods.ShowWindow(_hwnd, NativeMethods.SwHide);
-        }
-
-        IsVisible = false;
-        LastHiddenUtc = DateTime.UtcNow;
+            if (_window is { } window && window.IsVisible)
+            {
+                window.HidePopup();
+            }
+            else
+            {
+                MarkHidden();
+            }
+        });
     }
 
     public void Destroy()
     {
-        if (_hwnd != IntPtr.Zero)
+        AvaloniaUiHost.Invoke(() =>
         {
-            NativeMethods.DestroyWindow(_hwnd);
-            _hwnd = IntPtr.Zero;
-        }
+            _window?.Close();
+            _window = null;
+            MarkHidden();
+        });
+    }
 
-        IsVisible = false;
+    private void MarkHidden()
+    {
+        Volatile.Write(ref _isVisible, 0);
         LastHiddenUtc = DateTime.UtcNow;
     }
 
-    private void EnsureWindow()
+    private static int CalculateHeightDips(HelpPopupContent content)
     {
-        if (_hwnd != IntPtr.Zero)
-        {
-            return;
-        }
-
-        var instance = NativeMethods.GetModuleHandle(null);
-        var windowClass = new NativeMethods.WndClassEx
-        {
-            cbSize = (uint)Marshal.SizeOf<NativeMethods.WndClassEx>(),
-            lpfnWndProc = PopupWndProc,
-            hInstance = instance,
-            lpszClassName = ClassName
-        };
-
-        NativeMethods.RegisterClassEx(ref windowClass);
-
-        _hwnd = NativeMethods.CreateWindowEx(
-            NativeMethods.WsExToolWindow | NativeMethods.WsExTopMost,
-            ClassName,
-            "DisplayLullaby",
-            NativeMethods.WsPopup,
-            0,
-            0,
-            Scale(WidthDips),
-            Scale(CalculateHeightDips(_content)),
-            _owner,
-            IntPtr.Zero,
-            instance,
-            IntPtr.Zero);
-
-        if (_hwnd == IntPtr.Zero)
-        {
-            throw new InvalidOperationException($"Could not create help popup: {NativeMethods.LastErrorMessage()}");
-        }
+        var displayRows = Math.Max(1, content.Displays.Count);
+        var hotkeyRows = Math.Max(1, content.Hotkeys.Count);
+        return 128 + (hotkeyRows * 40) + (displayRows * 31);
     }
 
     private static NativeMethods.Point CalculatePosition(int width, int height)
@@ -141,10 +113,16 @@ internal sealed unsafe class HelpPopupWindow
             y = point.Y + 14;
         }
 
-        x = Math.Clamp(x, work.Left + 8, work.Right - width - 8);
-        y = Math.Clamp(y, work.Top + 8, work.Bottom - height - 8);
+        var minX = work.Left + 8;
+        var minY = work.Top + 8;
+        var maxX = Math.Max(minX, work.Right - width - 8);
+        var maxY = Math.Max(minY, work.Bottom - height - 8);
 
-        return new NativeMethods.Point { X = x, Y = y };
+        return new NativeMethods.Point
+        {
+            X = Math.Clamp(x, minX, maxX),
+            Y = Math.Clamp(y, minY, maxY)
+        };
     }
 
     private static NativeMethods.Rect GetWorkArea(NativeMethods.Point point)
@@ -152,7 +130,7 @@ internal sealed unsafe class HelpPopupWindow
         var monitor = NativeMethods.MonitorFromPoint(point, NativeMethods.MonitorDefaultToNearest);
         var info = new NativeMethods.MonitorInfoEx
         {
-            cbSize = (uint)sizeof(NativeMethods.MonitorInfoEx)
+            cbSize = (uint)Marshal.SizeOf<NativeMethods.MonitorInfoEx>()
         };
 
         return monitor != IntPtr.Zero && NativeMethods.GetMonitorInfo(monitor, ref info)
@@ -160,32 +138,15 @@ internal sealed unsafe class HelpPopupWindow
             : new NativeMethods.Rect { Left = 0, Top = 0, Right = 1920, Bottom = 1080 };
     }
 
-    private static int CalculateHeightDips(HelpPopupContent content)
-    {
-        var displayRows = Math.Max(1, content.Displays.Count);
-        var hotkeyRows = Math.Max(1, content.Hotkeys.Count);
-        return 148 + (hotkeyRows * 38) + (displayRows * 30);
-    }
-
-    private void UpdateDpiScale()
+    private static double GetCursorScale()
     {
         var dpi = TryGetCursorMonitorDpi();
-        if (dpi == 0)
-        {
-            dpi = TryGetWindowDpi();
-        }
-
-        if (dpi == 0)
-        {
-            dpi = TryGetSystemDpi();
-        }
-
         if (dpi < 72 || dpi > 768)
         {
             dpi = DesignDpi;
         }
 
-        _scale = dpi / (double)DesignDpi;
+        return dpi / (double)DesignDpi;
     }
 
     private static uint TryGetCursorMonitorDpi()
@@ -194,42 +155,18 @@ internal sealed unsafe class HelpPopupWindow
         {
             if (!NativeMethods.GetCursorPos(out var point))
             {
-                return 0;
+                return DesignDpi;
             }
 
             var monitor = NativeMethods.MonitorFromPoint(point, NativeMethods.MonitorDefaultToNearest);
             return monitor != IntPtr.Zero
                 && NativeMethods.GetDpiForMonitor(monitor, NativeMethods.MdtEffectiveDpi, out var dpiX, out _) == 0
                     ? dpiX
-                    : 0;
+                    : DesignDpi;
         }
         catch (DllNotFoundException)
         {
-            return 0;
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return 0;
-        }
-    }
-
-    private uint TryGetWindowDpi()
-    {
-        try
-        {
-            return _hwnd == IntPtr.Zero ? 0 : NativeMethods.GetDpiForWindow(_hwnd);
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return 0;
-        }
-    }
-
-    private static uint TryGetSystemDpi()
-    {
-        try
-        {
-            return NativeMethods.GetDpiForSystem();
+            return DesignDpi;
         }
         catch (EntryPointNotFoundException)
         {
@@ -237,395 +174,327 @@ internal sealed unsafe class HelpPopupWindow
         }
     }
 
-    private int Scale(int dips) => Math.Max(1, (int)Math.Round(dips * _scale));
+    private static int Scale(int dips, double scale) => Math.Max(1, (int)Math.Round(dips * scale));
+}
 
-    private int ScaleSigned(int dips) => (int)Math.Round(dips * _scale);
+internal sealed class AvaloniaHelpPopupWindow : Window
+{
+    private readonly Action _onHidden;
+    private DateTime _shownUtc = DateTime.MinValue;
+    private bool _hiding;
 
-    private nint HandleMessage(IntPtr hwnd, uint msg, nuint wParam, nint lParam)
+    public AvaloniaHelpPopupWindow(Action onHidden)
     {
-        switch (msg)
+        _onHidden = onHidden;
+
+        Title = "DisplayLullaby";
+        CanResize = false;
+        ShowInTaskbar = false;
+        SizeToContent = SizeToContent.Manual;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        WindowDecorations = Avalonia.Controls.WindowDecorations.None;
+        Topmost = true;
+        UseLayoutRounding = true;
+        FontFamily = new FontFamily("Inter, Segoe UI");
+        Background = Brush(248, 250, 252);
+
+        KeyDown += (_, e) =>
         {
-            case NativeMethods.WmPaint:
-                Paint(hwnd);
-                return 0;
-
-            case NativeMethods.WmKeyDown:
-                if ((int)wParam == NativeMethods.VkEscape)
-                {
-                    Hide();
-                    return 0;
-                }
-
-                break;
-
-            case NativeMethods.WmLButtonDown:
-            case NativeMethods.WmRButtonDown:
-                Hide();
-                return 0;
-
-            case NativeMethods.WmActivate:
-                if (((uint)wParam & 0xFFFF) == NativeMethods.WaInactive)
-                {
-                    Hide();
-                    return 0;
-                }
-
-                break;
-
-            case NativeMethods.WmKillFocus:
-            case NativeMethods.WmClose:
-                Hide();
-                return 0;
-
-            case NativeMethods.WmDestroy:
-                if (hwnd == _hwnd)
-                {
-                    _hwnd = IntPtr.Zero;
-                    IsVisible = false;
-                }
-
-                return 0;
-        }
-
-        return NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                HidePopup();
+            }
+        };
+        PointerPressed += (_, _) =>
+        {
+            if (!IsOpeningGracePeriod())
+            {
+                HidePopup();
+            }
+        };
+        Closed += (_, _) => _onHidden();
     }
 
-    private void Paint(IntPtr hwnd)
+    public void PrepareToShow()
     {
-        var hdc = NativeMethods.BeginPaint(hwnd, out var paint);
-        if (hdc == IntPtr.Zero)
+        _shownUtc = DateTime.UtcNow;
+    }
+
+    public void UpdateContent(HelpPopupContent content)
+    {
+        Content = BuildContent(content);
+    }
+
+    public void HidePopup()
+    {
+        if (_hiding)
         {
             return;
         }
 
+        _hiding = true;
         try
         {
-            NativeMethods.GetClientRect(hwnd, out var client);
-            DrawPanel(hdc, client);
+            Hide();
+            _onHidden();
         }
         finally
         {
-            NativeMethods.EndPaint(hwnd, ref paint);
+            _hiding = false;
         }
     }
 
-    private void DrawPanel(IntPtr hdc, NativeMethods.Rect client)
+    private static Control BuildContent(HelpPopupContent content)
     {
-        var canvasBrush = NativeMethods.CreateSolidBrush(ColorRef(248, 250, 252));
-        var cardBrush = NativeMethods.CreateSolidBrush(ColorRef(255, 255, 255));
-        var cardPen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(1), ColorRef(226, 232, 240));
-        var softBlueBrush = NativeMethods.CreateSolidBrush(ColorRef(239, 246, 255));
-        var softBluePen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(1), ColorRef(191, 219, 254));
-        var rowBrush = NativeMethods.CreateSolidBrush(ColorRef(248, 250, 252));
-        var rowPen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(1), ColorRef(226, 232, 240));
-        var blueBrush = NativeMethods.CreateSolidBrush(ColorRef(37, 99, 235));
-        var whiteBrush = NativeMethods.CreateSolidBrush(ColorRef(255, 255, 255));
-
-        var titleFont = CreateFont(20, NativeMethods.FwSemiBold);
-        var subtitleFont = CreateFont(14, NativeMethods.FwNormal);
-        var bodyFont = CreateFont(14, NativeMethods.FwNormal);
-        var bodySemiboldFont = CreateFont(14, NativeMethods.FwSemiBold);
-        var captionFont = CreateFont(11, NativeMethods.FwSemiBold);
-        var footerFont = CreateFont(12, NativeMethods.FwNormal);
-        var keyFont = CreateFont(14, NativeMethods.FwSemiBold);
-
-        try
+        var stack = new StackPanel
         {
-            NativeMethods.FillRect(hdc, ref client, canvasBrush);
-            NativeMethods.SetBkMode(hdc, NativeMethods.Transparent);
-
-            SelectBrushAndPen(hdc, cardBrush, cardPen, h =>
-                NativeMethods.RoundRect(
-                    h,
-                    Scale(6),
-                    Scale(6),
-                    client.Right - Scale(6),
-                    client.Bottom - Scale(6),
-                    Scale(20),
-                    Scale(20)));
-
-            DrawMonitorGlyph(hdc, 22, 21, blueBrush, whiteBrush);
-            DrawText(hdc, "DisplayLullaby", 66, 18, 210, 24, titleFont, ColorRef(15, 23, 42));
-            DrawText(hdc, "F9 off; F10/F11 standby until input", 66, 41, 292, 20, subtitleFont, ColorRef(100, 116, 139));
-
-            var y = 77;
-            if (_content.Hotkeys.Count == 0)
-            {
-                DrawActionRow(hdc, "-", "No hotkeys configured", 22, y, 346, softBlueBrush, softBluePen, keyFont, bodyFont);
-                y += 42;
-            }
-            else
-            {
-                foreach (var hotkey in _content.Hotkeys)
-                {
-                    DrawActionRow(hdc, hotkey.Key, hotkey.Description, 22, y, 346, softBlueBrush, softBluePen, keyFont, bodyFont);
-                    y += 42;
-                }
-            }
-
-            y += 8;
-            DrawText(hdc, "DISPLAYS", 22, y, 130, 18, captionFont, ColorRef(71, 85, 105));
-            y += 22;
-
-            if (_content.Displays.Count == 0)
-            {
-                DrawDisplayRow(hdc, "-", "No displays are visible right now", "", 22, y, 346, rowBrush, rowPen, bodySemiboldFont, bodyFont);
-                y += 30;
-            }
-            else
-            {
-                foreach (var display in _content.Displays)
-                {
-                    DrawDisplayRow(hdc, display.DeviceName, display.Description, display.Role, 22, y, 346, rowBrush, rowPen, bodySemiboldFont, bodyFont);
-                    y += 30;
-                }
-            }
-
-            DrawText(
-                hdc,
-                "Left-click: hide. Right-click: menu. Esc: close.",
-                22,
-                CalculateHeightDips(_content) - 31,
-                344,
-                18,
-                footerFont,
-                ColorRef(100, 116, 139));
-        }
-        finally
-        {
-            DeleteIfNotZero(canvasBrush);
-            DeleteIfNotZero(cardBrush);
-            DeleteIfNotZero(cardPen);
-            DeleteIfNotZero(softBlueBrush);
-            DeleteIfNotZero(softBluePen);
-            DeleteIfNotZero(rowBrush);
-            DeleteIfNotZero(rowPen);
-            DeleteIfNotZero(blueBrush);
-            DeleteIfNotZero(whiteBrush);
-            DeleteIfNotZero(titleFont);
-            DeleteIfNotZero(subtitleFont);
-            DeleteIfNotZero(bodyFont);
-            DeleteIfNotZero(bodySemiboldFont);
-            DeleteIfNotZero(captionFont);
-            DeleteIfNotZero(footerFont);
-            DeleteIfNotZero(keyFont);
-        }
-    }
-
-    private void DrawMonitorGlyph(IntPtr hdc, int x, int y, IntPtr blueBrush, IntPtr whiteBrush)
-    {
-        SelectBrushAndPen(hdc, blueBrush, IntPtr.Zero, h =>
-            NativeMethods.RoundRect(h, Scale(x), Scale(y), Scale(x + 32), Scale(y + 32), Scale(10), Scale(10)));
-
-        SelectBrushAndPen(hdc, whiteBrush, IntPtr.Zero, h =>
-            NativeMethods.RoundRect(h, Scale(x + 7), Scale(y + 8), Scale(x + 25), Scale(y + 22), Scale(4), Scale(4)));
-
-        SelectBrushAndPen(hdc, blueBrush, IntPtr.Zero, h =>
-            NativeMethods.RoundRect(h, Scale(x + 10), Scale(y + 11), Scale(x + 22), Scale(y + 18), Scale(2), Scale(2)));
-
-        FillBox(hdc, x + 14, y + 22, x + 18, y + 26, whiteBrush);
-        FillBox(hdc, x + 10, y + 26, x + 22, y + 28, whiteBrush);
-    }
-
-    private void DrawActionRow(
-        IntPtr hdc,
-        string key,
-        string description,
-        int x,
-        int y,
-        int width,
-        IntPtr brush,
-        IntPtr pen,
-        IntPtr keyFont,
-        IntPtr bodyFont)
-    {
-        SelectBrushAndPen(hdc, brush, pen, h =>
-            NativeMethods.RoundRect(h, Scale(x), Scale(y), Scale(x + width), Scale(y + 34), Scale(10), Scale(10)));
-
-        DrawKeyPill(hdc, key, x + 10, y + 6, keyFont);
-        DrawText(hdc, description, x + 72, y + 7, width - 86, 20, bodyFont, ColorRef(30, 41, 59));
-    }
-
-    private void DrawKeyPill(IntPtr hdc, string key, int x, int y, IntPtr keyFont)
-    {
-        var brush = NativeMethods.CreateSolidBrush(ColorRef(255, 255, 255));
-        var pen = NativeMethods.CreatePen(NativeMethods.PsSolid, Scale(1), ColorRef(191, 219, 254));
-
-        try
-        {
-            SelectBrushAndPen(hdc, brush, pen, h =>
-                NativeMethods.RoundRect(
-                    h,
-                    Scale(x),
-                    Scale(y),
-                    Scale(x + KeyPillWidthDips),
-                    Scale(y + KeyPillHeightDips),
-                    Scale(7),
-                    Scale(7)));
-
-            DrawText(
-                hdc,
-                key,
-                x,
-                y,
-                KeyPillWidthDips,
-                KeyPillHeightDips,
-                keyFont,
-                ColorRef(37, 99, 235),
-                NativeMethods.DtCenter,
-                useMetricCentering: true,
-                visualOffsetYDips: 0);
-        }
-        finally
-        {
-            DeleteIfNotZero(brush);
-            DeleteIfNotZero(pen);
-        }
-    }
-
-    private void DrawDisplayRow(
-        IntPtr hdc,
-        string deviceName,
-        string description,
-        string role,
-        int x,
-        int y,
-        int width,
-        IntPtr brush,
-        IntPtr pen,
-        IntPtr deviceFont,
-        IntPtr bodyFont)
-    {
-        SelectBrushAndPen(hdc, brush, pen, h =>
-            NativeMethods.RoundRect(h, Scale(x), Scale(y), Scale(x + width), Scale(y + 26), Scale(8), Scale(8)));
-
-        DrawText(hdc, deviceName, x + 10, y + 4, 72, 18, deviceFont, ColorRef(15, 23, 42));
-        DrawText(hdc, description, x + 86, y + 4, width - 158, 18, bodyFont, ColorRef(30, 41, 59));
-
-        if (!string.IsNullOrWhiteSpace(role))
-        {
-            DrawText(hdc, role, x + width - 64, y + 4, 54, 18, bodyFont, ColorRef(100, 116, 139), NativeMethods.DtCenter);
-        }
-    }
-
-    private void FillBox(IntPtr hdc, int left, int top, int right, int bottom, IntPtr brush)
-    {
-        var rect = new NativeMethods.Rect
-        {
-            Left = Scale(left),
-            Top = Scale(top),
-            Right = Scale(right),
-            Bottom = Scale(bottom)
+            Spacing = 10
         };
-        NativeMethods.FillRect(hdc, ref rect, brush);
+        stack.Children.Add(BuildHeader());
+        stack.Children.Add(BuildHotkeys(content.Hotkeys));
+        stack.Children.Add(BuildDisplays(content.Displays));
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Left-click: hide. Right-click: menu. Esc: close.",
+            FontSize = 12,
+            Foreground = Brush(82, 105, 145),
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        return new Border
+        {
+            Margin = new Thickness(6),
+            Padding = new Thickness(16),
+            Background = Brushes.White,
+            BorderBrush = Brush(203, 213, 225),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Child = stack
+        };
     }
 
-    private static void SelectBrushAndPen(IntPtr hdc, IntPtr brush, IntPtr pen, Action<IntPtr> draw)
+    private static Control BuildHeader()
     {
-        var oldBrush = brush == IntPtr.Zero ? IntPtr.Zero : NativeMethods.SelectObject(hdc, brush);
-        var oldPen = pen == IntPtr.Zero ? IntPtr.Zero : NativeMethods.SelectObject(hdc, pen);
-
-        try
+        var grid = new Grid
         {
-            draw(hdc);
-        }
-        finally
-        {
-            if (oldPen != IntPtr.Zero)
+            ColumnDefinitions =
             {
-                NativeMethods.SelectObject(hdc, oldPen);
-            }
-
-            if (oldBrush != IntPtr.Zero)
-            {
-                NativeMethods.SelectObject(hdc, oldBrush);
-            }
-        }
-    }
-
-    private void DrawText(
-        IntPtr hdc,
-        string text,
-        int left,
-        int top,
-        int width,
-        int height,
-        IntPtr font,
-        uint color,
-        uint alignment = NativeMethods.DtLeft,
-        bool useMetricCentering = false,
-        int visualOffsetYDips = 0)
-    {
-        var visualOffsetY = ScaleSigned(visualOffsetYDips);
-        var rect = new NativeMethods.Rect
-        {
-            Left = Scale(left),
-            Top = Scale(top) + visualOffsetY,
-            Right = Scale(left + width),
-            Bottom = Scale(top + height) + visualOffsetY
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star)
+            },
+            ColumnSpacing = 12
         };
 
-        var oldFont = NativeMethods.SelectObject(hdc, font);
-        NativeMethods.SetTextColor(hdc, color);
-
-        if (useMetricCentering && NativeMethods.GetTextMetrics(hdc, out var metrics))
+        var icon = new Image
         {
-            var oldAlign = NativeMethods.SetTextAlign(
-                hdc,
-                NativeMethods.TaCenter | NativeMethods.TaBaseline | NativeMethods.TaNoUpdateCp);
-            var textHeight = metrics.tmAscent + metrics.tmDescent;
-            var baseline = rect.Top + ((rect.Height - textHeight) / 2) + metrics.tmAscent;
-            NativeMethods.TextOut(hdc, rect.Left + (rect.Width / 2), baseline, text, text.Length);
-            NativeMethods.SetTextAlign(hdc, oldAlign);
-        }
-        else
+            Source = LoadBitmapAsset("avares://DisplayLullaby/Assets/settings.png"),
+            Width = 38,
+            Height = 38,
+            Stretch = Stretch.Uniform,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var text = new StackPanel
         {
-            NativeMethods.DrawText(
-                hdc,
-                text,
-                -1,
-                ref rect,
-                alignment | NativeMethods.DtSingleLine | NativeMethods.DtVCenter | NativeMethods.DtNoPrefix | NativeMethods.DtEndEllipsis);
-        }
-
-        NativeMethods.SelectObject(hdc, oldFont);
-    }
-
-    private IntPtr CreateFont(int height, int weight)
-    {
-        return NativeMethods.CreateFont(
-            -Scale(height),
-            0,
-            0,
-            0,
-            weight,
-            0,
-            0,
-            0,
-            NativeMethods.DefaultCharset,
-            NativeMethods.OutDefaultPrecIs,
-            NativeMethods.ClipDefaultPrecIs,
-            NativeMethods.ClearTypeQuality,
-            NativeMethods.DefaultPitch,
-            "Segoe UI");
-    }
-
-    private static uint ColorRef(byte red, byte green, byte blue)
-    {
-        return (uint)(red | (green << 8) | (blue << 16));
-    }
-
-    private static void DeleteIfNotZero(IntPtr handle)
-    {
-        if (handle != IntPtr.Zero)
+            Spacing = 0,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        text.Children.Add(new TextBlock
         {
-            NativeMethods.DeleteObject(handle);
-        }
+            Text = "DisplayLullaby",
+            FontSize = 20,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = Brush(15, 23, 42)
+        });
+        text.Children.Add(new TextBlock
+        {
+            Text = "Monitor standby shortcuts",
+            FontSize = 13,
+            Foreground = Brush(82, 105, 145)
+        });
+
+        Grid.SetColumn(icon, 0);
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(icon);
+        grid.Children.Add(text);
+        return grid;
     }
 
-    private static nint WndProc(IntPtr hwnd, uint msg, nuint wParam, nint lParam)
+    private static Control BuildHotkeys(IReadOnlyList<HelpHotkeyRow> hotkeys)
     {
-        return _current?.HandleMessage(hwnd, msg, wParam, lParam)
-               ?? NativeMethods.DefWindowProc(hwnd, msg, wParam, lParam);
+        var stack = new StackPanel
+        {
+            Spacing = 6
+        };
+
+        if (hotkeys.Count == 0)
+        {
+            stack.Children.Add(BuildActionRow("-", "No hotkeys configured"));
+            return stack;
+        }
+
+        foreach (var hotkey in hotkeys)
+        {
+            stack.Children.Add(BuildActionRow(hotkey.Key, hotkey.Description));
+        }
+
+        return stack;
     }
+
+    private static Control BuildActionRow(string key, string description)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(54, GridUnitType.Pixel),
+                new ColumnDefinition(GridLength.Star)
+            },
+            ColumnSpacing = 10
+        };
+
+        var keyPill = new Border
+        {
+            Width = 48,
+            Height = 22,
+            Background = Brushes.White,
+            BorderBrush = Brush(191, 219, 254),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = key,
+                FontSize = 13,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = Brush(37, 99, 235),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center
+            }
+        };
+
+        var text = new TextBlock
+        {
+            Text = description,
+            FontSize = 14,
+            Foreground = Brush(30, 41, 59),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+
+        Grid.SetColumn(keyPill, 0);
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(keyPill);
+        grid.Children.Add(text);
+
+        return new Border
+        {
+            Height = 34,
+            Background = Brush(239, 246, 255),
+            BorderBrush = Brush(191, 219, 254),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(7),
+            Padding = new Thickness(10, 5),
+            Child = grid
+        };
+    }
+
+    private static Control BuildDisplays(IReadOnlyList<HelpDisplayRow> displays)
+    {
+        var stack = new StackPanel
+        {
+            Spacing = 6
+        };
+        stack.Children.Add(new TextBlock
+        {
+            Text = "DISPLAYS",
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = Brush(71, 85, 105),
+            Margin = new Thickness(0, 2, 0, 0)
+        });
+
+        if (displays.Count == 0)
+        {
+            stack.Children.Add(BuildDisplayRow("-", "No displays are visible right now", string.Empty));
+            return stack;
+        }
+
+        foreach (var display in displays)
+        {
+            stack.Children.Add(BuildDisplayRow(display.DeviceName, display.Description, display.Role));
+        }
+
+        return stack;
+    }
+
+    private static Control BuildDisplayRow(string deviceName, string description, string role)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(76, GridUnitType.Pixel),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto)
+            },
+            ColumnSpacing = 8
+        };
+
+        var device = new TextBlock
+        {
+            Text = deviceName,
+            FontSize = 13,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = Brush(15, 23, 42),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        var descriptionText = new TextBlock
+        {
+            Text = description,
+            FontSize = 13,
+            Foreground = Brush(30, 41, 59),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        var roleText = new TextBlock
+        {
+            Text = role,
+            FontSize = 13,
+            Foreground = Brush(82, 105, 145),
+            VerticalAlignment = VerticalAlignment.Center,
+            IsVisible = !string.IsNullOrWhiteSpace(role)
+        };
+
+        Grid.SetColumn(device, 0);
+        Grid.SetColumn(descriptionText, 1);
+        Grid.SetColumn(roleText, 2);
+        grid.Children.Add(device);
+        grid.Children.Add(descriptionText);
+        grid.Children.Add(roleText);
+
+        return new Border
+        {
+            Height = 26,
+            Background = Brush(248, 250, 252),
+            BorderBrush = Brush(226, 232, 240),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(10, 3),
+            Child = grid
+        };
+    }
+
+    private static Bitmap LoadBitmapAsset(string assetUri)
+    {
+        using var stream = AssetLoader.Open(new Uri(assetUri));
+        return new Bitmap(stream);
+    }
+
+    private static SolidColorBrush Brush(byte r, byte g, byte b) => new(Color.FromRgb(r, g, b));
+
+    private bool IsOpeningGracePeriod() => (DateTime.UtcNow - _shownUtc).TotalMilliseconds < 300;
 }
