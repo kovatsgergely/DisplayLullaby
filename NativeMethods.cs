@@ -43,6 +43,7 @@ internal static unsafe partial class NativeMethods
     public const uint ScMonitorPower = 0xF170;
     public const int MonitorPowerOn = -1;
     public const int MonitorPowerOff = 2;
+    public const uint AttachParentProcess = 0xFFFFFFFF;
     public static readonly IntPtr HwndBroadcast = new(0xFFFF);
 
     public const uint NifMessage = 0x00000001;
@@ -330,6 +331,10 @@ internal static unsafe partial class NativeMethods
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool FreeConsole();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool AttachConsole(uint dwProcessId);
 
     [DllImport("kernel32.dll", EntryPoint = "GetModuleHandleW", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr GetModuleHandle(string? lpModuleName);

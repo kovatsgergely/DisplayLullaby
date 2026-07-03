@@ -20,6 +20,7 @@ internal static class Program
                 return TrayApplication.Run();
             }
 
+            AttachParentConsole();
             return RunCommand(args);
         }
         catch (Exception ex)
@@ -49,6 +50,11 @@ internal static class Program
         {
             NativeMethods.SetProcessDPIAware();
         }
+    }
+
+    private static void AttachParentConsole()
+    {
+        NativeMethods.AttachConsole(NativeMethods.AttachParentProcess);
     }
 
     private static int RunCommand(string[] args)
