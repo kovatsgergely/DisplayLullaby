@@ -84,6 +84,7 @@ internal sealed class AvaloniaSettingsWindow : Window
     private const string DdcModeTooltip = "DDC/CI command, monitor support varies.";
     private const string IdleTooltip = "No keyboard or mouse input for this long after temporary standby.";
     private const string WakeDelayTooltip = "Wait this long after waking the monitor, then send Windows global standby.";
+    private const string StartupTooltip = "Launch DisplayLullaby automatically after you sign in to Windows.";
 
     private readonly Action _onSaved;
     private readonly Action<TrayAction, string> _executeCommand;
@@ -100,6 +101,7 @@ internal sealed class AvaloniaSettingsWindow : Window
     private readonly ComboBox _powerModeCombo;
     private readonly TextBox _idleMinutesTextBox;
     private readonly TextBox _wakeDelayTextBox;
+    private readonly CheckBox _startupCheckBox;
     private readonly TargetOption[] _targetOptions;
     private readonly bool _secondaryControlsEnabled;
     private AppSettings _settings;
@@ -169,12 +171,14 @@ internal sealed class AvaloniaSettingsWindow : Window
 
         _idleMinutesTextBox = NumberBox(settings.TemporaryStandbyIdleMinutes.ToString(), 52);
         _wakeDelayTextBox = NumberBox(settings.TemporaryStandbyWakeDelaySeconds.ToString(), 52);
+        _startupCheckBox = StartupCheckBox();
 
         Content = BuildContent();
         ApplyTargetAvailability();
         EnsureDistinctTargets(primaryChanged: true, showStatus: false);
         _primaryTargetCombo.SelectionChanged += (_, _) => HandleTargetSelectionChanged(primaryChanged: true);
         _secondaryTargetCombo.SelectionChanged += (_, _) => HandleTargetSelectionChanged(primaryChanged: false);
+        _startupCheckBox.IsCheckedChanged += (_, _) => ToggleStartupRegistration();
         KeyDown += HandleKeyDown;
         PointerPressed += HandlePointerPressed;
         Deactivated += HandleDeactivated;
@@ -203,6 +207,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         };
         body.Children.Add(BuildHotkeyCard());
         body.Children.Add(BuildBehaviorCard());
+        body.Children.Add(BuildStartupCard());
         body.Children.Add(BuildDisplaysCard());
 
         DockPanel.SetDock(body, Dock.Top);
@@ -353,6 +358,11 @@ internal sealed class AvaloniaSettingsWindow : Window
         }
 
         return Card("Detected displays", stack);
+    }
+
+    private Control BuildStartupCard()
+    {
+        return Card("Windows startup", WithTooltip(_startupCheckBox, StartupTooltip));
     }
 
     private Control BuildFooter()
@@ -572,6 +582,20 @@ internal sealed class AvaloniaSettingsWindow : Window
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
             Padding = new Thickness(6, 4)
+        };
+
+    private static CheckBox StartupCheckBox() =>
+        new()
+        {
+            Content = new TextBlock
+            {
+                Text = "Start DisplayLullaby when I sign in to Windows",
+                FontSize = 13,
+                Foreground = Palette.PrimaryText,
+                VerticalAlignment = VerticalAlignment.Center
+            },
+            IsChecked = StartupRegistration.IsEnabled,
+            VerticalAlignment = VerticalAlignment.Center
         };
 
     private static void AddHotkeyRow(Grid grid, int row, string label, Button hotkey, ComboBox? target)
@@ -894,6 +918,21 @@ internal sealed class AvaloniaSettingsWindow : Window
         EndCapture(resumeHotkeys: true);
         _executeCommand(TrayAction.GlobalOff, "all");
         SetStatus("Global monitor-off command sent.");
+    }
+
+    private void ToggleStartupRegistration()
+    {
+        try
+        {
+            var enabled = _startupCheckBox.IsChecked == true;
+            StartupRegistration.SetEnabled(enabled);
+            SetStatus(enabled ? "Windows startup enabled." : "Windows startup disabled.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Could not update Windows startup: {ex.Message}");
+            _startupCheckBox.IsChecked = StartupRegistration.IsEnabled;
+        }
     }
 
     private static TargetOption[] BuildTargetOptions(params string[] currentValues)

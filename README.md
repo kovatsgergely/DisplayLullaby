@@ -75,4 +75,4 @@ Create the signed MSI installer:
 .\Build-Installer.ps1
 ```
 
-The MSI is written to `Release\DisplayLullaby-<version>-x64.msi`. It installs per user under `%LOCALAPPDATA%\Programs\DisplayLullaby`, creates a Start Menu shortcut, and offers an optional `Start with Windows` feature during setup. The optional startup feature writes an HKCU Run entry and is off by default.
+The MSI is written to `Release\DisplayLullaby-<version>-x64.msi`. It installs per user under `%LOCALAPPDATA%\Programs\DisplayLullaby`, creates a Start Menu shortcut, and offers an optional `Start with Windows` feature during setup. The optional startup feature writes an HKCU Run entry and is off by default. The same startup entry can also be changed later from the settings window.
