@@ -431,6 +431,206 @@ public sealed class LaunchArgumentsTests
     }
 }
 
+public sealed class SessionSettingsFormTests
+{
+    private static SessionSnapshot Latest() => TestData.Snapshot(
+        TestData.App("ImageGlass", @"C:\WindowsApps\ig.exe"),
+        TestData.App("notepad", @"C:\Windows\notepad.exe"),
+        TestData.App("notepad", @"C:\Windows\notepad.exe", "notepad b.txt") with
+        {
+            Windows = [new WindowSnapshot("b.txt - Notepad", "Notepad", new WindowRect(0, 0, 1, 1), WindowShowState.Normal, null)]
+        });
+
+    private static SessionRestoreSettings With(params string[] ignore) =>
+        SessionRestoreSettings.Default with { Ignore = ignore };
+
+    [Fact]
+    public void RowsComeFromSnapshotPlusSimpleIgnoreRules()
+    {
+        var form = SessionSettingsForm.From(With("Spotify.exe", "C:\\Tools\\*", "*.Photos_*"), Latest());
+
+        Assert.Equal(["ImageGlass", "notepad", "Spotify"], form.Apps.Select(r => r.ProcessName));
+        Assert.True(form.Apps[0].Restore);
+        Assert.False(form.Apps[2].Restore);
+        Assert.False(form.Apps[2].InSnapshot);
+        Assert.Equal(["notepad window", "b.txt - Notepad"], form.Apps[1].WindowTitles);
+        Assert.Equal("C:\\Tools\\*" + Environment.NewLine + "*.Photos_*", form.AdvancedIgnoreRules);
+    }
+
+    [Fact]
+    public void SnapshotAppMatchingSimpleRuleIsUnchecked()
+    {
+        var form = SessionSettingsForm.From(With("NOTEPAD"), Latest());
+        Assert.False(form.Apps.Single(r => r.ProcessName == "notepad").Restore);
+        Assert.Equal(2, form.Apps.Count);
+    }
+
+    [Fact]
+    public void AdvancedRuleMarksRowAsLocked()
+    {
+        var form = SessionSettingsForm.From(With("C:\\WindowsApps\\*"), Latest());
+        Assert.True(form.Apps.Single(r => r.ProcessName == "ImageGlass").IgnoredByAdvancedRule);
+        Assert.False(form.Apps.Single(r => r.ProcessName == "notepad").IgnoredByAdvancedRule);
+    }
+
+    [Fact]
+    public void UncheckAddsRuleAndCheckRemovesIt()
+    {
+        var form = SessionSettingsForm.From(With("Spotify", "C:\\Tools\\*"), Latest());
+        form.Apps.Single(r => r.ProcessName == "ImageGlass").Restore = false;
+        form.Apps.Single(r => r.ProcessName == "Spotify").Restore = true;
+
+        Assert.True(form.TryBuild(out var settings, out var errors), string.Join(";", errors));
+        Assert.Equal(["ImageGlass", "C:\\Tools\\*"], settings.Ignore);
+    }
+
+    [Fact]
+    public void UnchangedFormRoundTripsSettings()
+    {
+        var original = With("explorer", "Spotify", "*.Photos_*") with { SnapshotIntervalMinutes = 7, KeepSnapshots = 9 };
+        var form = SessionSettingsForm.From(original, Latest());
+
+        Assert.True(form.TryBuild(out var built, out _));
+        Assert.Equal(7, built.SnapshotIntervalMinutes);
+        Assert.Equal(9, built.KeepSnapshots);
+        Assert.Equal(original.Ignore.OrderBy(x => x), built.Ignore.OrderBy(x => x));
+        Assert.Equal(RestorePlanner.DefaultSelfRestoringApps, built.SelfRestoring);
+        Assert.Equal("", form.SelfRestoring);
+        Assert.Equal("", form.DropArguments);
+    }
+
+    [Theory]
+    [InlineData("0", "20", "20", "5", "Snapshot interval")]
+    [InlineData("3", "601", "20", "5", "Startup delay")]
+    [InlineData("3", "20", "x", "5", "Window wait")]
+    [InlineData("3", "20", "20", "51", "Keep snapshots")]
+    public void ValidatesRanges(string interval, string delay, string wait, string keep, string field)
+    {
+        var form = SessionSettingsForm.From(SessionRestoreSettings.Default, null);
+        form.SnapshotIntervalMinutes = interval;
+        form.StartupDelaySeconds = delay;
+        form.WindowWaitSeconds = wait;
+        form.KeepSnapshots = keep;
+
+        Assert.False(form.TryBuild(out _, out var errors));
+        Assert.Single(errors);
+        Assert.StartsWith(field, errors[0]);
+    }
+
+    [Fact]
+    public void RejectsHashInRulesAndKeepsCustomLists()
+    {
+        var form = SessionSettingsForm.From(SessionRestoreSettings.Default, null);
+        form.AdvancedIgnoreRules = "a#b";
+        Assert.False(form.TryBuild(out _, out _));
+
+        form.AdvancedIgnoreRules = "";
+        form.SelfRestoring = "chrome\r\n  \r\nCode\nchrome";
+        form.DropArguments = "--hidden";
+        Assert.True(form.TryBuild(out var settings, out _));
+        Assert.Equal(["chrome", "Code"], settings.SelfRestoring);
+        Assert.Equal(["--hidden"], settings.DropArguments);
+    }
+
+    [Fact]
+    public void IniFormatRoundTripsThroughParser()
+    {
+        var settings = SessionRestoreSettings.Default with
+        {
+            Enabled = false,
+            SnapshotIntervalMinutes = 12,
+            Ignore = ["explorer", "C:\\Tools\\*"],
+            SelfRestoring = ["chrome"],
+            DropArguments = ["--hidden", "/prefetch:*"]
+        };
+
+        var text = SessionRestoreIni.Format(settings);
+        var parsed = SessionRestoreSettings.Parse(text.Split('\n'));
+
+        Assert.Empty(parsed.Warnings);
+        Assert.False(parsed.Enabled);
+        Assert.Equal(12, parsed.SnapshotIntervalMinutes);
+        Assert.Equal(settings.Ignore, parsed.Ignore);
+        Assert.Equal(settings.SelfRestoring, parsed.SelfRestoring);
+        Assert.Equal(settings.DropArguments, parsed.DropArguments);
+        Assert.StartsWith("# DisplayLullaby session restore", text);
+    }
+
+    [Fact]
+    public void IniFormatOfDefaultsMatchesDefaultFileSemantics()
+    {
+        var text = SessionRestoreIni.Format(SessionRestoreSettings.Default);
+        var fromFormat = SessionRestoreSettings.Parse(text.Split('\n'));
+        var fromDefault = SessionRestoreSettings.Parse(SessionRestoreSettings.DefaultFileText.Split('\n'));
+
+        Assert.Equal(fromDefault.Ignore, fromFormat.Ignore);
+        Assert.Equal(fromDefault.SelfRestoring, fromFormat.SelfRestoring);
+        Assert.Equal(fromDefault.DropArguments, fromFormat.DropArguments);
+        Assert.Contains("# SelfRestoring=chrome", text);
+        Assert.DoesNotContain("\nSelfRestoring=", text);
+    }
+
+    [Fact]
+    public void AtomicWriteReplacesWithoutLeavingTemp()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "dl-ini-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var path = Path.Combine(dir, "session-restore.ini");
+            AtomicFile.WriteAllText(path, "A=1");
+            AtomicFile.WriteAllText(path, "A=2");
+            Assert.Equal("A=2", File.ReadAllText(path));
+            Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+}
+
+public sealed class PackageLogoTests
+{
+    private const string Root = @"C:\Program Files\WindowsApps\DuongDieuPhap.ImageGlass_10.0.0.0_x64__abc";
+
+    private static readonly string Manifest = """
+        <Package><Properties><Logo>Assets\StoreLogo.png</Logo></Properties>
+        <Applications><Application><uap:VisualElements Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" /></Application></Applications></Package>
+        """;
+
+    private static readonly string[] AssetFiles =
+    [
+        "Square44x44Logo.scale-100.png", "Square44x44Logo.scale-200.png",
+        "Square44x44Logo.targetsize-16.png", "Square44x44Logo.targetsize-32.png",
+        "Square44x44Logo.targetsize-32_altform-unplated.png", "Square44x44Logo.targetsize-32_contrast-black.png"
+    ];
+
+    [Fact]
+    public void FindsUnplatedTargetSizeLogoFromExeInSubfolder()
+    {
+        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Root + @"\AppxManifest.xml" };
+        var logo = PackageLogo.Find(
+            Root + @"\ImageGlass\ImageGlass.exe",
+            files.Contains,
+            path => path == Root + @"\AppxManifest.xml" ? Manifest : null,
+            (dir, pattern) => dir == Root + @"\Assets" ? AssetFiles.Where(f => f.StartsWith(pattern.Split('.')[0])) : []);
+
+        Assert.Equal(Root + @"\Assets\Square44x44Logo.targetsize-32_altform-unplated.png", logo);
+    }
+
+    [Fact]
+    public void ManifestCandidatesSmallFirstThenStoreLogo() =>
+        Assert.Equal([@"Assets\Square44x44Logo.png", @"Assets\Square150x150Logo.png", @"Assets\StoreLogo.png"], PackageLogo.LogoCandidates(Manifest));
+
+    [Fact]
+    public void ScaleVariantWhenNoTargetSize() =>
+        Assert.Equal("Logo.scale-200.png", PackageLogo.BestVariant("Logo", ["Logo.scale-100.png", "Logo.scale-200.png", "Other.png"]));
+
+    [Fact]
+    public void NoManifestMeansNoLogo() =>
+        Assert.Null(PackageLogo.Find(@"C:\Windows\notepad.exe", _ => false, _ => null, (_, _) => []));
+}
+
 internal static class TestData
 {
     public static AppSnapshot App(string name, string? exe, string? commandLine = null) =>

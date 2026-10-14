@@ -18,9 +18,10 @@ Everything lives in `SessionRestore/`, namespace `DisplayLullaby.SessionRestore`
 
 - `Core/` has no Windows dependencies and is what the tests compile: models, JSON serialization,
   `SnapshotStore`, `IgnoreMatcher`, `RestorePlanner`, `RestoreTrigger`, `WindowMatcher`,
-  `CommandLineSplitter`, `LaunchArguments`, `PackagedArguments`, `MonitorFill` / `PlacementPlanner`, `SessionRestoreSettings`.
+  `CommandLineSplitter`, `LaunchArguments`, `PackagedArguments`, `SessionSettingsForm` + `SessionRestoreIni` +
+  `AtomicFile` (settings window model), `PackageLogo`, `MonitorFill` / `PlacementPlanner`, `SessionRestoreSettings`.
 - `Windows/` holds the Win32 interop (`SessionNative`), `WindowCapture` + `ProcessDetails` + `DpiAwareness`,
-  `PackagedActivation`,
+  `PackagedActivation`, `SessionSettingsWindow` (Avalonia) + `AppIconLoader`,
   `SessionRestorer`, and `SessionRestoreController` (the glue to the tray message loop).
 
 `TrayApplication` owns one controller: it forwards `WM_TIMER`, `WM_QUERYENDSESSION`, `WM_ENDSESSION`,
@@ -113,9 +114,29 @@ first run; "Reload config file" reloads it. Keys: `Enabled`, `RestoreOnStartup`,
 `Ignore=` rules (process name, exe path, or AUMID, `*`/`?` wildcards), optional `SelfRestoring=` and
 `DropArgument=` overrides (a non-empty list replaces the built-in one).
 
+## Settings window
+
+"Session: settings..." opens an Avalonia window built with the same helpers as the main Settings window
+(`AvaloniaSettingsWindow.Card/Label/NumberBox/PrimaryButton/...`, palette, header, footer), on the shared
+`AvaloniaUiHost` UI thread, single instance (re-opening activates it). Sections:
+
+- **General**: Enabled, restore after reboot, interval, startup delay, window wait, keep snapshots.
+- **Apps**: one row per process from the latest snapshot plus one per simple `Ignore=` rule (apps ignored at
+  capture are absent from snapshots). Icon: Store package logo from `AppxManifest.xml` (`PackageLogo` picks
+  the targetsize/scale variant), else the exe's shell icon (`SHGetFileInfo` drawn into a 32-bit DIB), else a
+  letter badge. Unchecking "Restore" writes `Ignore=<process>`; checking removes it. Rules with wildcards,
+  paths or AUMIDs stay in the "Advanced ignore rules" box; rows they match show a disabled checkbox.
+- **Advanced**: SelfRestoring and DropArgument lists; empty means built-in defaults (no key written).
+- **Status**: last snapshot time and counts; Snapshot now, Restore now, Open snapshots folder.
+
+Nothing applies until Save: `SessionSettingsForm.TryBuild` validates ranges and `#`, `SessionRestoreIni.Format`
+writes the commented default layout, `AtomicFile` replaces the file, and the controller `Reload()` runs on the
+tray message loop (timers restart with the new interval). Cancel/Esc discards. Hand edits outside the known
+keys and comments are not preserved by Save.
+
 ## Tray menu
 
-Session: snapshot now, restore now, pause snapshots (checked while paused), open config, open snapshots folder.
+Session: settings..., snapshot now, restore now, pause snapshots (checked while paused), open config, open snapshots folder.
 Autostart is DisplayLullaby's existing HKCU Run entry; the module adds none of its own.
 
 ## Limits
@@ -132,6 +153,9 @@ Autostart is DisplayLullaby's existing HKCU Run entry; the module adds none of i
   custom caption keep their start file.
 - Exclusive fullscreen (games, D3D) is not distinguished from borderless fill.
 - Restore is not transactional: a crash mid-restore leaves a partial desktop, recovered by the next snapshot.
+
+- The settings window lists apps from the latest snapshot only; apps never captured cannot be pre-ignored
+  except through the Advanced rules box.
 
 ## Future ideas
 

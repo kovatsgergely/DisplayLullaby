@@ -17,6 +17,7 @@ internal sealed unsafe class TrayApplication
     private const int MenuSessionPause = 2902;
     private const int MenuSessionConfig = 2903;
     private const int MenuSessionFolder = 2904;
+    private const int MenuSessionSettings = 2905;
     private const int MenuReload = 3000;
     private const int MenuExit = 3001;
     private const uint WmRunQueuedAction = NativeMethods.WmApp + 2;
@@ -41,6 +42,7 @@ internal sealed unsafe class TrayApplication
     private bool _temporaryStandbyTimerRunning;
     private bool _temporaryStandbyWakeDelayTimerRunning;
     private SessionRestoreController? _sessionRestore;
+    private SessionSettingsWindow? _sessionSettingsWindow;
 
     public static int Run()
     {
@@ -73,6 +75,7 @@ internal sealed unsafe class TrayApplication
         StopTemporaryStandbyWakeDelayTimer();
         _sessionRestore?.Dispose();
         _settingsWindow?.Close();
+        _sessionSettingsWindow?.Close();
         _helpPopup?.Destroy();
         AvaloniaUiHost.Shutdown();
         DeleteTrayIcon();
@@ -509,7 +512,7 @@ internal sealed unsafe class TrayApplication
             return;
         }
 
-        if (command is >= MenuSessionSnapshot and <= MenuSessionFolder)
+        if (command is >= MenuSessionSnapshot and <= MenuSessionSettings)
         {
             HandleSessionRestoreCommand(command);
             return;
@@ -562,6 +565,7 @@ internal sealed unsafe class TrayApplication
         }
 
         var pauseFlags = NativeMethods.MfString | (_sessionRestore.Paused ? NativeMethods.MfChecked : 0);
+        NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionSettings, "Session: settings...");
         NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionSnapshot, "Session: snapshot now");
         NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionRestore, _sessionRestore.IsRestoring ? "Session: restoring..." : "Session: restore now");
         NativeMethods.AppendMenu(menu, pauseFlags, MenuSessionPause, "Session: pause snapshots");
@@ -593,6 +597,41 @@ internal sealed unsafe class TrayApplication
             case MenuSessionFolder:
                 _sessionRestore.OpenSnapshotFolder();
                 break;
+            case MenuSessionSettings:
+                ShowSessionSettings();
+                break;
+        }
+    }
+
+    private void ShowSessionSettings()
+    {
+        _helpPopup?.Hide();
+        if (_sessionSettingsWindow is { IsOpen: true })
+        {
+            _sessionSettingsWindow.Show();
+            return;
+        }
+
+        try
+        {
+            var controller = _sessionRestore!;
+            _sessionSettingsWindow = new SessionSettingsWindow(new SessionSettingsActions(
+                LoadSettings: SessionRestoreController.ReadSettings,
+                LoadLatestSnapshot: () => controller.LoadLatestSnapshot(),
+                SettingsSaved: () => PostToMessageLoop(() =>
+                {
+                    controller.Reload();
+                    ShowBalloon("Session restore", "Settings saved and applied.");
+                }),
+                SnapshotNow: () => PostToMessageLoop(controller.SnapshotNow),
+                RestoreNow: () => PostToMessageLoop(() => controller.RestoreLatest(automatic: false)),
+                OpenSnapshotsFolder: () => PostToMessageLoop(controller.OpenSnapshotFolder),
+                Closed: () => PostToMessageLoop(() => _sessionSettingsWindow = null)));
+            _sessionSettingsWindow.Show();
+        }
+        catch (Exception ex)
+        {
+            ShowBalloon("DisplayLullaby", $"Could not open session settings: {ex.Message}");
         }
     }
 

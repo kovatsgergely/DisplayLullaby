@@ -30,6 +30,64 @@ internal static unsafe partial class SessionNative
     public const uint SwpNoActivate = 0x0010;
     public const uint SwpNoOwnerZOrder = 0x0200;
 
+    public const uint ShgfiIcon = 0x100;
+    public const uint ShgfiLargeIcon = 0x0;
+    public const uint DiNormal = 0x3;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ShFileInfo
+    {
+        public nint Icon;
+        public int IconIndex;
+        public uint Attributes;
+        public fixed char DisplayName[260];
+        public fixed char TypeName[80];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BitmapInfoHeader
+    {
+        public uint Size;
+        public int Width;
+        public int Height;
+        public ushort Planes;
+        public ushort BitCount;
+        public uint Compression;
+        public uint SizeImage;
+        public int XPelsPerMeter;
+        public int YPelsPerMeter;
+        public uint ClrUsed;
+        public uint ClrImportant;
+    }
+
+    [LibraryImport("shell32.dll", EntryPoint = "SHGetFileInfoW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial nint SHGetFileInfo(string path, uint attributes, ref ShFileInfo info, uint size, uint flags);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DestroyIcon(nint icon);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DrawIconEx(nint hdc, int x, int y, nint icon, int cx, int cy, uint step, nint brush, uint flags);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial nint CreateCompatibleDC(nint hdc);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DeleteDC(nint hdc);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial nint CreateDIBSection(nint hdc, ref BitmapInfoHeader info, uint usage, out void* bits, nint section, uint offset);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial nint SelectObject(nint hdc, nint obj);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DeleteObject(nint obj);
+
     public delegate bool EnumWindowsProc(nint hwnd, nint lParam);
 
     public delegate bool MonitorEnumProc(nint monitor, nint hdc, nint lprcMonitor, nint data);

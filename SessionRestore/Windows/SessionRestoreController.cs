@@ -183,6 +183,15 @@ internal sealed class SessionRestoreController : IDisposable
         StartSnapshotTimer();
     }
 
+    /// <summary>Latest snapshot for the settings window (may be null).</summary>
+    public SessionSnapshot? LoadLatestSnapshot() => Store.LoadLatest();
+
+    /// <summary>Writes session-restore.ini atomically in the commented default layout. Call <see cref="Reload"/> after.</summary>
+    public static void WriteSettings(SessionRestoreSettings settings) =>
+        AtomicFile.WriteAllText(SettingsPath, SessionRestoreIni.Format(settings));
+
+    public static SessionRestoreSettings ReadSettings() => LoadSettings();
+
     public void OpenConfig()
     {
         EnsureSettingsFile();
