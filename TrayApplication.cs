@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using DisplayLullaby.SessionRestore;
 
 namespace DisplayLullaby;
 
@@ -11,6 +12,11 @@ internal sealed unsafe class TrayApplication
     private const int MenuTemporaryStandbyPrimary = 2600;
     private const int MenuTemporaryStandbySecondary = 2601;
     private const int MenuSettings = 2800;
+    private const int MenuSessionSnapshot = 2900;
+    private const int MenuSessionRestore = 2901;
+    private const int MenuSessionPause = 2902;
+    private const int MenuSessionConfig = 2903;
+    private const int MenuSessionFolder = 2904;
     private const int MenuReload = 3000;
     private const int MenuExit = 3001;
     private const uint WmRunQueuedAction = NativeMethods.WmApp + 2;
@@ -34,6 +40,7 @@ internal sealed unsafe class TrayApplication
     private TemporaryStandbyState? _temporaryStandby;
     private bool _temporaryStandbyTimerRunning;
     private bool _temporaryStandbyWakeDelayTimerRunning;
+    private SessionRestoreController? _sessionRestore;
 
     public static int Run()
     {
@@ -53,6 +60,7 @@ internal sealed unsafe class TrayApplication
         CreateHiddenWindow();
         AddTrayIcon("DisplayLullaby");
         RegisterConfiguredHotkeys(showWarnings: true);
+        StartSessionRestore();
 
         while (NativeMethods.GetMessage(out var message, IntPtr.Zero, 0, 0))
         {
@@ -63,6 +71,7 @@ internal sealed unsafe class TrayApplication
         UnregisterConfiguredHotkeys();
         StopTemporaryStandbyTimer();
         StopTemporaryStandbyWakeDelayTimer();
+        _sessionRestore?.Dispose();
         _settingsWindow?.Close();
         _helpPopup?.Destroy();
         AvaloniaUiHost.Shutdown();
@@ -209,6 +218,7 @@ internal sealed unsafe class TrayApplication
     {
         _config = AppConfig.LoadOrCreate();
         RegisterConfiguredHotkeys(showWarnings: true);
+        _sessionRestore?.Reload();
         if (showBalloon)
         {
             ShowBalloon("DisplayLullaby", "Configuration reloaded.");
@@ -446,6 +456,8 @@ internal sealed unsafe class TrayApplication
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuTemporaryStandbyPrimary, FormatTemporaryStandbyMenu(primary: true));
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuTemporaryStandbySecondary, FormatTemporaryStandbyMenu(primary: false));
             NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
+            AppendSessionRestoreMenu(menu);
+            NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuReload, "Reload config file");
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuExit, "Exit");
 
@@ -497,6 +509,12 @@ internal sealed unsafe class TrayApplication
             return;
         }
 
+        if (command is >= MenuSessionSnapshot and <= MenuSessionFolder)
+        {
+            HandleSessionRestoreCommand(command);
+            return;
+        }
+
         if (command == MenuGlobalOff)
         {
             Execute(TrayAction.GlobalOff, "all");
@@ -524,6 +542,57 @@ internal sealed unsafe class TrayApplication
         if (command is >= MenuBaseWake and < MenuReload)
         {
             Execute(TrayAction.Wake, (command - MenuBaseWake).ToString());
+        }
+    }
+
+    private void StartSessionRestore()
+    {
+        _sessionRestore = new SessionRestoreController(
+            notify: (title, text) => PostToMessageLoop(() => ShowBalloon(title, text)),
+            startTimer: (id, intervalMs) => NativeMethods.SetTimer(_hwnd, id, intervalMs, IntPtr.Zero) != 0,
+            stopTimer: id => NativeMethods.KillTimer(_hwnd, id));
+        _sessionRestore.Start();
+    }
+
+    private void AppendSessionRestoreMenu(IntPtr menu)
+    {
+        if (_sessionRestore is null)
+        {
+            return;
+        }
+
+        var pauseFlags = NativeMethods.MfString | (_sessionRestore.Paused ? NativeMethods.MfChecked : 0);
+        NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionSnapshot, "Session: snapshot now");
+        NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionRestore, _sessionRestore.IsRestoring ? "Session: restoring..." : "Session: restore now");
+        NativeMethods.AppendMenu(menu, pauseFlags, MenuSessionPause, "Session: pause snapshots");
+        NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionConfig, "Session: open config...");
+        NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionFolder, "Session: open snapshots folder");
+    }
+
+    private void HandleSessionRestoreCommand(uint command)
+    {
+        if (_sessionRestore is null)
+        {
+            return;
+        }
+
+        switch (command)
+        {
+            case MenuSessionSnapshot:
+                _sessionRestore.SnapshotNow();
+                break;
+            case MenuSessionRestore:
+                _sessionRestore.RestoreLatest(automatic: false);
+                break;
+            case MenuSessionPause:
+                _sessionRestore.TogglePause();
+                break;
+            case MenuSessionConfig:
+                _sessionRestore.OpenConfig();
+                break;
+            case MenuSessionFolder:
+                _sessionRestore.OpenSnapshotFolder();
+                break;
         }
     }
 
@@ -762,7 +831,20 @@ internal sealed unsafe class TrayApplication
 
                 return 0;
 
+            case SessionNative.WmQueryEndSession:
+                _sessionRestore?.OnQueryEndSession();
+                return 1;
+
+            case SessionNative.WmEndSession:
+                _sessionRestore?.OnEndSession(wParam != 0);
+                return 0;
+
             case NativeMethods.WmTimer:
+                if (_sessionRestore?.HandleTimer(wParam) == true)
+                {
+                    return 0;
+                }
+
                 if (wParam == TemporaryStandbyTimerId)
                 {
                     CheckTemporaryStandbyHandoff();
