@@ -56,7 +56,8 @@ internal sealed class SessionRestoreController : IDisposable
 
         var latest = Store.LoadLatest();
         var bootTime = DateTimeOffset.Now - TimeSpan.FromMilliseconds(Environment.TickCount64);
-        if (Settings.RestoreOnStartup && RestoreTrigger.ShouldAutoRestore(latest, bootTime, DateTimeOffset.Now, MaxAutoRestoreAge))
+        var sessionStart = RestoreTrigger.SessionStart(bootTime, SessionNative.TryGetLogonTime());
+        if (Settings.RestoreOnStartup && RestoreTrigger.ShouldAutoRestore(latest, sessionStart, DateTimeOffset.Now, MaxAutoRestoreAge))
         {
             // Do not snapshot until restore is done: an early snapshot of a half-empty desktop would become "latest".
             _startTimer(StartupRestoreTimerId, (uint)Math.Max(1, Settings.StartupDelaySeconds) * 1000);

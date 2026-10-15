@@ -185,6 +185,25 @@ public sealed class RestorePlannerTests
         Assert.False(RestoreTrigger.ShouldAutoRestore(stale, boot, now, TimeSpan.FromDays(7)));
         Assert.False(RestoreTrigger.ShouldAutoRestore(null, boot, now, TimeSpan.FromDays(7)));
     }
+
+    [Fact]
+    public void AutoRestoreAfterFastStartupShutdownUsesLogonTime()
+    {
+        // Fast Startup: the boot clock still says Windows started days ago, but the user just logged on.
+        var now = new DateTimeOffset(2026, 10, 15, 9, 0, 0, TimeSpan.Zero);
+        var boot = now.AddDays(-3);
+        var logon = now.AddMinutes(-1);
+        var atShutdown = TestData.Snapshot(now.AddHours(-12), TestData.App("a", "a.exe"));
+        var sinceLogon = TestData.Snapshot(now.AddSeconds(-30), TestData.App("a", "a.exe"));
+
+        var sessionStart = RestoreTrigger.SessionStart(boot, logon);
+
+        Assert.Equal(logon, sessionStart);
+        Assert.True(RestoreTrigger.ShouldAutoRestore(atShutdown, sessionStart, now, TimeSpan.FromDays(7)));
+        Assert.False(RestoreTrigger.ShouldAutoRestore(atShutdown, RestoreTrigger.SessionStart(boot, null), now, TimeSpan.FromDays(7)));
+        Assert.False(RestoreTrigger.ShouldAutoRestore(sinceLogon, sessionStart, now, TimeSpan.FromDays(7)));
+        Assert.Equal(boot, RestoreTrigger.SessionStart(boot, boot.AddMinutes(-5)));
+    }
 }
 
 public sealed class SettingsAndHelpersTests

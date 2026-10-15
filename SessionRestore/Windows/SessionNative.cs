@@ -221,4 +221,65 @@ internal static unsafe partial class SessionNative
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetTokenInformation(nint token, int infoClass, void* buffer, uint length, out uint returnLength);
+
+    // WTSQuerySessionInformationW(WTSSessionInfo) for the current logon time. A Fast Startup "Shut down"
+    // hibernates the kernel, so the boot tick count keeps running, but every user session is logged off.
+    public const int WtsSessionInfo = 24;
+    public static readonly nint WtsCurrentServerHandle = 0;
+    public const int WtsCurrentSession = -1;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct WtsInfo
+    {
+        public int State;
+        public uint SessionId;
+        public uint IncomingBytes;
+        public uint OutgoingBytes;
+        public uint IncomingFrames;
+        public uint OutgoingFrames;
+        public uint IncomingCompressedBytes;
+        public uint OutgoingCompressedBytes;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string WinStationName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
+        public string Domain;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 21)]
+        public string UserName;
+        public long ConnectTime;
+        public long DisconnectTime;
+        public long LastInputTime;
+        public long LogonTime;
+        public long CurrentTime;
+    }
+
+    [LibraryImport("wtsapi32.dll", EntryPoint = "WTSQuerySessionInformationW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool WTSQuerySessionInformation(nint server, int sessionId, int infoClass, out nint buffer, out uint bytesReturned);
+
+    [LibraryImport("wtsapi32.dll")]
+    public static partial void WTSFreeMemory(nint memory);
+
+    /// <summary>When the current user logged on, or null if Windows does not say.</summary>
+    public static DateTimeOffset? TryGetLogonTime()
+    {
+        if (!WTSQuerySessionInformation(WtsCurrentServerHandle, WtsCurrentSession, WtsSessionInfo, out var buffer, out var bytes) || buffer == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (bytes < (uint)Marshal.SizeOf<WtsInfo>())
+            {
+                return null;
+            }
+
+            var info = Marshal.PtrToStructure<WtsInfo>(buffer);
+            return info.LogonTime > 0 ? DateTimeOffset.FromFileTime(info.LogonTime) : null;
+        }
+        finally
+        {
+            WTSFreeMemory(buffer);
+        }
+    }
 }

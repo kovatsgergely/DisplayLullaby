@@ -147,17 +147,24 @@ internal static class RestorePlanner
 internal static class RestoreTrigger
 {
     /// <summary>
-    /// Auto-restore only when Windows was (re)started after the snapshot was taken. If DisplayLullaby
+    /// When the current Windows session started: the later of boot and logon. With Fast Startup (on by
+    /// default) "Shut down" does not reset the boot clock, so the logon time is what marks a new session.
+    /// </summary>
+    public static DateTimeOffset SessionStart(DateTimeOffset bootTime, DateTimeOffset? logonTime) =>
+        logonTime is { } logon && logon > bootTime ? logon : bootTime;
+
+    /// <summary>
+    /// Auto-restore only when Windows was (re)started, or the user logged on again, after the snapshot was taken. If DisplayLullaby
     /// itself was merely restarted (crash, update, manual exit) inside the same Windows session,
     /// the apps are still open and nothing should be launched or moved.
     /// </summary>
-    public static bool ShouldAutoRestore(SessionSnapshot? snapshot, DateTimeOffset bootTime, DateTimeOffset now, TimeSpan maxAge)
+    public static bool ShouldAutoRestore(SessionSnapshot? snapshot, DateTimeOffset sessionStart, DateTimeOffset now, TimeSpan maxAge)
     {
         if (snapshot is null || snapshot.Apps.Count == 0)
         {
             return false;
         }
 
-        return snapshot.CapturedAt < bootTime && now - snapshot.CapturedAt <= maxAge;
+        return snapshot.CapturedAt < sessionStart && now - snapshot.CapturedAt <= maxAge;
     }
 }
