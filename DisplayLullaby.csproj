@@ -20,6 +20,11 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="Tests\**" />
+    <None Remove="Tests\**" />
+    <InternalsVisibleTo Include="DisplayLullaby.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 </Project>
