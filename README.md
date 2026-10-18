@@ -43,6 +43,12 @@ The temporary standby keys wake on the same hotkey, any later key press, or mous
 
 F9 uses the Windows global monitor-off command. F10 and F11 use DDC/CI only for short temporary standby, then hand off to the Windows global monitor-off command after the configured idle period.
 
+## Idle monitors off
+
+Settings has an **Idle monitors off** option (off by default, 10 minutes by default, 1-1440 minutes). When it is on, DisplayLullaby turns all monitors off after that many minutes without keyboard or mouse input, using the same Windows global monitor-off command as F9 (`WM_SYSCOMMAND / SC_MONITORPOWER`, the signal Windows' own display timeout uses). Any input wakes the monitors.
+
+It fires once per idle period and is skipped while something keeps the display on: a system-wide display-required power request (video playback and similar), a full-screen Direct3D app, presentation mode, or another full-screen "busy" state. After such a blocker ends, the full wait starts again. It does not lock the PC or change the Windows display-off timeout. The config file keys are `IdleDisplaysOffEnabled=true|false` and `IdleDisplaysOffMinutes=<minutes>`.
+
 ## DDC/CI notes
 
 DDC/CI is a hardware control channel exposed by most external monitors over HDMI or DisplayPort. It can control settings such as brightness, input source, and power mode. It usually needs to be enabled in the monitor's on-screen display menu.

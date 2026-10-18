@@ -525,6 +525,23 @@ internal static unsafe partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetLastInputInfo(ref LastInputInfo plii);
 
+    public const int PowerInformationSystemExecutionState = 16;
+    public const uint EsSystemRequired = 0x00000001;
+    public const uint EsDisplayRequired = 0x00000002;
+
+    // Returns an NTSTATUS; 0 (STATUS_SUCCESS) on success.
+    [DllImport("powrprof.dll", ExactSpelling = true)]
+    public static extern uint CallNtPowerInformation(
+        int informationLevel,
+        void* inputBuffer,
+        uint inputBufferLength,
+        void* outputBuffer,
+        uint outputBufferLength);
+
+    // Returns an HRESULT; state is a QUERY_USER_NOTIFICATION_STATE value.
+    [DllImport("shell32.dll", ExactSpelling = true)]
+    public static extern int SHQueryUserNotificationState(int* state);
+
     [DllImport("user32.dll", EntryPoint = "MessageBoxW", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern int MessageBox(IntPtr hWnd, string lpText, string lpCaption, uint uType);
 
