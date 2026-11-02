@@ -136,7 +136,7 @@ keys and comments are not preserved by Save.
 
 ## Tray menu
 
-Session: settings..., snapshot now, restore now, open snapshots folder.
+Session: settings..., snapshot now, restore now.
 Autostart is DisplayLullaby's existing HKCU Run entry; the module adds none of its own.
 
 ## Limits

@@ -63,8 +63,8 @@ Some monitors accept only one of these sleep/off values, so try another option i
 
 DisplayLullaby can bring back the apps that were running, and their window positions, after a reboot or crash.
 It saves a snapshot every few minutes and at shutdown under `%LOCALAPPDATA%\DisplayLullaby\Sessions`, then
-restores it automatically after the next login. The tray menu has `Session: snapshot now / restore now /
-open snapshots folder`. Settings are in
+restores it automatically after the next login. The tray menu has `Session: snapshot now / restore now`.
+Settings are in
 `%LOCALAPPDATA%\DisplayLullaby\session-restore.ini`. The design is in `DESIGN-session-restore.md`.
 
 Tests for the platform-neutral logic: `dotnet test Tests/DisplayLullaby.Tests`.
