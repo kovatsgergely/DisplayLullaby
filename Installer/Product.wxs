@@ -1,5 +1,6 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   <Package
     Name="DisplayLullaby"
     Manufacturer="kovatsgergely"
@@ -7,42 +8,117 @@
     UpgradeCode="{EC441C33-D55A-4455-B582-17F833B02D25}"
     Scope="perUser">
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <!-- Major upgrade in place: the old version is removed early, then the new one is installed.
+         Keep this schedule: the Run value logic below relies on the old product being removed
+         before DL_WriteRunValue runs (older MSIs owned the Run value as a component). -->
+    <MajorUpgrade
+      Schedule="afterInstallInitialize"
+      DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="DisplayLullabyIcon" SourceFile="$(var.AppProjectDir)\Assets\DisplayLullaby.ico" />
     <Property Id="ARPPRODUCTICON" Value="DisplayLullabyIcon" />
 
-    <ui:WixUI Id="WixUI_FeatureTree" />
+    <!-- License page + Install, then a finish page with a "Launch DisplayLullaby" checkbox. -->
+    <ui:WixUI Id="WixUI_Minimal" />
     <WixVariable Id="WixUILicenseRtf" Value="$(var.AppProjectDir)\Installer\License.rtf" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch DisplayLullaby" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
 
+    <!-- Close a running DisplayLullaby (upgrade, repair, uninstall) so its files can be replaced.
+         WM_CLOSE first; if it is still running after the timeout it is terminated. No reboot prompt. -->
+    <util:CloseApplication
+      Id="CloseDisplayLullaby"
+      Target="DisplayLullaby.exe"
+      CloseMessage="yes"
+      RebootPrompt="no"
+      TerminateProcess="0" />
+
+    <Property Id="WixShellExecTarget" Value="[#DisplayLullabyExe]" />
+    <CustomAction
+      Id="LaunchDisplayLullaby"
+      BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+      DllEntry="WixShellExec"
+      Impersonate="yes"
+      Return="ignore" />
+    <UI>
+      <Publish
+        Dialog="ExitDialog"
+        Control="Finish"
+        Event="DoAction"
+        Value="LaunchDisplayLullaby"
+        Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+    </UI>
+
+    <!-- Start at sign-in. The Run value is NOT an MSI-owned component, so the user's choice in
+         Settings survives upgrades and repairs:
+         * fresh install            -> write it (default on)
+         * major upgrade            -> rewrite it only if it existed before (AppSearch runs before the
+                                       old product is removed), so a kept value survives even when the
+                                       old MSI owned it, and a removed value stays removed
+         * repair / modify          -> untouched
+         * full uninstall           -> delete it (not when uninstalled as part of an upgrade) -->
+    <Property Id="DL_RUN_EXISTING" Secure="yes">
+      <RegistrySearch
+        Id="FindExistingRunValue"
+        Root="HKCU"
+        Key="Software\Microsoft\Windows\CurrentVersion\Run"
+        Name="DisplayLullaby"
+        Type="raw" />
+    </Property>
+
+    <SetProperty
+      Id="DL_WriteRunValue"
+      Sequence="execute"
+      Before="DL_WriteRunValue"
+      Value="&quot;[System64Folder]reg.exe&quot; add &quot;HKCU\Software\Microsoft\Windows\CurrentVersion\Run&quot; /v DisplayLullaby /t REG_SZ /d &quot;\&quot;[INSTALLFOLDER]DisplayLullaby.exe\&quot;&quot; /f" />
+    <CustomAction
+      Id="DL_WriteRunValue"
+      BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+      DllEntry="WixQuietExec"
+      Execute="deferred"
+      Impersonate="yes"
+      Return="check" />
+
+    <SetProperty
+      Id="DL_RemoveRunValue"
+      Sequence="execute"
+      Before="DL_RemoveRunValue"
+      Value="&quot;[System64Folder]reg.exe&quot; delete &quot;HKCU\Software\Microsoft\Windows\CurrentVersion\Run&quot; /v DisplayLullaby /f" />
+    <CustomAction
+      Id="DL_RemoveRunValue"
+      BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+      DllEntry="WixQuietExec"
+      Execute="deferred"
+      Impersonate="yes"
+      Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom
+        Action="DL_WriteRunValue"
+        After="WriteRegistryValues"
+        Condition="NOT REMOVE~=&quot;ALL&quot; AND ((NOT Installed AND NOT WIX_UPGRADE_DETECTED) OR (WIX_UPGRADE_DETECTED AND DL_RUN_EXISTING))" />
+      <Custom
+        Action="DL_RemoveRunValue"
+        Before="RemoveRegistryValues"
+        Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+
+    <!-- Per-user install. User settings in %LOCALAPPDATA%\DisplayLullaby are never touched. -->
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="ProgramsFolder" Name="Programs">
         <Directory Id="INSTALLFOLDER" Name="DisplayLullaby" />
       </Directory>
     </StandardDirectory>
 
-    <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="ApplicationProgramsFolder" Name="DisplayLullaby" />
-    </StandardDirectory>
-
-    <Feature Id="ApplicationFeature" Title="DisplayLullaby" Level="1" AllowAdvertise="no">
+    <Feature Id="ApplicationFeature" Title="DisplayLullaby" Level="1" AllowAdvertise="no" AllowAbsent="no">
       <ComponentGroupRef Id="ApplicationFiles" />
-      <ComponentRef Id="StartMenuShortcutComponent" />
-    </Feature>
-
-    <Feature
-      Id="StartupFeature"
-      Title="Start with Windows"
-      Description="Start DisplayLullaby automatically when you sign in."
-      Level="100"
-      AllowAdvertise="no">
-      <ComponentRef Id="StartupRunComponent" />
     </Feature>
   </Package>
 
   <Fragment>
     <DirectoryRef Id="INSTALLFOLDER">
+      <!-- Keep this list in sync with the AOT publish output; Build-Installer.ps1 fails if they differ. -->
       <Component Id="DisplayLullabyExeComponent" Guid="{1C5B2046-82BE-4944-BF59-7CD850B2B419}">
         <File Id="DisplayLullabyExe" Source="$(var.ReleaseDir)\DisplayLullaby.exe" />
         <RegistryValue Root="HKCU" Key="Software\DisplayLullaby\InstalledFiles" Name="DisplayLullabyExe" Type="integer" Value="1" KeyPath="yes" />
@@ -63,34 +139,6 @@
         <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
         <RemoveFolder Id="RemoveProgramsFolder" Directory="ProgramsFolder" On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\DisplayLullaby" Name="InstallFolderCleanup" Type="integer" Value="1" KeyPath="yes" />
-      </Component>
-      <Component Id="StartupRunComponent" Guid="{341C75CC-1FBE-4C39-936C-78CF7361C78E}">
-        <RegistryValue
-          Root="HKCU"
-          Key="Software\Microsoft\Windows\CurrentVersion\Run"
-          Name="DisplayLullaby"
-          Type="string"
-          Value="&quot;[INSTALLFOLDER]DisplayLullaby.exe&quot;"
-          KeyPath="yes" />
-      </Component>
-    </DirectoryRef>
-
-    <DirectoryRef Id="ApplicationProgramsFolder">
-      <Component Id="StartMenuShortcutComponent" Guid="{87D50A2E-24F0-4D33-B869-7A29EAB45F00}">
-        <Shortcut
-          Id="DisplayLullabyStartMenuShortcut"
-          Name="DisplayLullaby"
-          Description="Start DisplayLullaby"
-          Target="[INSTALLFOLDER]DisplayLullaby.exe"
-          WorkingDirectory="INSTALLFOLDER" />
-        <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
-        <RegistryValue
-          Root="HKCU"
-          Key="Software\DisplayLullaby"
-          Name="StartMenuShortcut"
-          Type="integer"
-          Value="1"
-          KeyPath="yes" />
       </Component>
     </DirectoryRef>
   </Fragment>

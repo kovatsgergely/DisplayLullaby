@@ -1,6 +1,10 @@
+<#
+.SYNOPSIS
+    Publishes DisplayLullaby (Native AOT, win-x64) into .\Release and signs DisplayLullaby.exe.
+#>
 param(
-    [string]$CertificateSubject = 'CN=DisplayLullaby',
-    [int]$DisplayLullabyCommitCount = -1
+    [int]$DisplayLullabyCommitCount = -1,
+    [switch]$SkipSigning
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,6 +19,11 @@ $releaseVersion = Get-DisplayLullabyReleaseVersion -ProjectRoot $projectRoot -Co
 
 New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
 
+# Remove a previous publish so stale binaries cannot slip into the MSI (MSIs in Release are kept).
+Get-ChildItem -LiteralPath $releaseDir -File |
+    Where-Object { $_.Extension -in '.exe', '.dll', '.pdb', '.json', '.xml' } |
+    Remove-Item -Force
+
 Write-Host "Publishing DisplayLullaby $($releaseVersion.Version) from GitHub main commit count $($releaseVersion.CommitCount)."
 
 dotnet publish $projectPath -c Release -r win-x64 "-p:PublishDir=$releaseDir\" "-p:DisplayLullabyCommitCount=$($releaseVersion.CommitCount)"
@@ -22,15 +31,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE."
 }
 
-$cert = Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object {
-    $_.Subject -eq $CertificateSubject -and
-    $_.HasPrivateKey -and
-    ($_.EnhancedKeyUsageList | Where-Object { $_.FriendlyName -eq 'Code Signing' })
-} | Sort-Object NotAfter -Descending | Select-Object -First 1
-
-if (-not $cert) {
-    throw "No code-signing certificate with subject '$CertificateSubject' was found in Cert:\CurrentUser\My."
+if ($SkipSigning) {
+    Write-Warning "Skipping signing of $exePath (-SkipSigning)."
 }
-
-$signature = Set-AuthenticodeSignature -FilePath $exePath -Certificate $cert -HashAlgorithm SHA256
-$signature | Format-List Status,StatusMessage,SignerCertificate,Path
+else {
+    & (Join-Path $projectRoot 'Sign-Artifact.ps1') -Path $exePath -Description 'DisplayLullaby'
+}
