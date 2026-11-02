@@ -14,8 +14,6 @@ internal sealed unsafe class TrayApplication
     private const int MenuSettings = 2800;
     private const int MenuSessionSnapshot = 2900;
     private const int MenuSessionRestore = 2901;
-    private const int MenuSessionPause = 2902;
-    private const int MenuSessionConfig = 2903;
     private const int MenuSessionFolder = 2904;
     private const int MenuSessionSettings = 2905;
     private const int MenuReload = 3000;
@@ -564,12 +562,9 @@ internal sealed unsafe class TrayApplication
             return;
         }
 
-        var pauseFlags = NativeMethods.MfString | (_sessionRestore.Paused ? NativeMethods.MfChecked : 0);
         NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionSettings, "Session: settings...");
         NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionSnapshot, "Session: snapshot now");
         NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionRestore, _sessionRestore.IsRestoring ? "Session: restoring..." : "Session: restore now");
-        NativeMethods.AppendMenu(menu, pauseFlags, MenuSessionPause, "Session: pause snapshots");
-        NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionConfig, "Session: open config...");
         NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuSessionFolder, "Session: open snapshots folder");
     }
 
@@ -587,12 +582,6 @@ internal sealed unsafe class TrayApplication
                 break;
             case MenuSessionRestore:
                 _sessionRestore.RestoreLatest(automatic: false);
-                break;
-            case MenuSessionPause:
-                _sessionRestore.TogglePause();
-                break;
-            case MenuSessionConfig:
-                _sessionRestore.OpenConfig();
                 break;
             case MenuSessionFolder:
                 _sessionRestore.OpenSnapshotFolder();

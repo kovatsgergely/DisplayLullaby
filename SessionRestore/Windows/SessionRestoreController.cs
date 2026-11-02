@@ -32,7 +32,6 @@ internal sealed class SessionRestoreController : IDisposable
 
     public SnapshotStore Store { get; private set; }
 
-    public bool Paused { get; private set; }
 
     public bool IsRestoring => _restoreCancellation is not null;
 
@@ -82,7 +81,7 @@ internal sealed class SessionRestoreController : IDisposable
     {
         if (timerId == SnapshotTimerId)
         {
-            if (!Paused && !IsRestoring && !_endingSession)
+            if (!IsRestoring && !_endingSession)
             {
                 TrySnapshot("periodic", notify: false);
             }
@@ -103,7 +102,7 @@ internal sealed class SessionRestoreController : IDisposable
     /// <summary>WM_QUERYENDSESSION: capture while every app is still open, then freeze snapshots so app shutdown is not recorded.</summary>
     public void OnQueryEndSession()
     {
-        if (Settings.Enabled && !Paused && !IsRestoring && !_endingSession)
+        if (Settings.Enabled && !IsRestoring && !_endingSession)
         {
             TrySnapshot("end-session", notify: false);
         }
@@ -118,12 +117,6 @@ internal sealed class SessionRestoreController : IDisposable
     }
 
     public void SnapshotNow() => TrySnapshot("manual", notify: true);
-
-    public void TogglePause()
-    {
-        Paused = !Paused;
-        _notify("Session restore", Paused ? "Snapshots paused." : "Snapshots resumed.");
-    }
 
     public void RestoreLatest(bool automatic)
     {
@@ -192,12 +185,6 @@ internal sealed class SessionRestoreController : IDisposable
         AtomicFile.WriteAllText(SettingsPath, SessionRestoreIni.Format(settings));
 
     public static SessionRestoreSettings ReadSettings() => LoadSettings();
-
-    public void OpenConfig()
-    {
-        EnsureSettingsFile();
-        Process.Start(new ProcessStartInfo(SettingsPath) { UseShellExecute = true })?.Dispose();
-    }
 
     public void OpenSnapshotFolder()
     {
