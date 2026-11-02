@@ -11,42 +11,49 @@ Turning all monitors off uses the Windows `WM_SYSCOMMAND / SC_MONITORPOWER` comm
 ## Commands
 
 ```powershell
-DisplayLullaby list
-DisplayLullaby global-off
-DisplayLullaby toggle DISPLAY2
-DisplayLullaby sleep 2
+DisplayLullaby list                 # list DDC/CI monitors
+DisplayLullaby global-off           # turn all monitors off (alias: off)
+DisplayLullaby sleep 2              # DDC/CI standby for one monitor
 DisplayLullaby sleep all --standby
+DisplayLullaby toggle DISPLAY2
 DisplayLullaby wake 2
 DisplayLullaby config-path
+DisplayLullaby help
 DisplayLullaby tray
 ```
 
-Running `DisplayLullaby.exe` with no arguments starts the tray app.
+Running `DisplayLullaby.exe` with no arguments starts the tray app. Targets can be a monitor ID, a `DISPLAYn` name, `all`, `primary`, `secondary`, or part of the monitor description such as `Dell`.
 
-Left-click the tray icon to show Help. Right-click the tray icon for Settings, session restore, and exit commands.
+## Tray menu
 
-## Tray hotkeys
+Left-click the tray icon to show Help. Right-click it for:
 
-On first tray launch, the app creates:
+- Settings...
+- Turn all monitors off
+- Temporary standby for the primary and secondary target
+- Session: settings..., snapshot now, restore now
+- Exit
+## Tray hotkeys and Settings
+
+On first tray launch, the app creates `%LOCALAPPDATA%\DisplayLullaby\config.ini`. Default hotkeys:
 
 ```text
-%LOCALAPPDATA%\DisplayLullaby\config.ini
+F9     turn all monitors off (Windows global monitor-off)
+F10    temporary DDC/CI standby for DISPLAY1 until input
+F11    temporary DDC/CI standby for DISPLAY2 until input
 ```
 
-Default hotkeys:
+The Settings window has these sections:
 
-```text
-F9     turn all monitors off
-F10    temporary standby for DISPLAY1 until input
-F11    temporary standby for DISPLAY2 until input
-```
+- **Hotkeys**: capture a key and pick the target display for each command.
+- **Standby behavior**: the DDC mode (Standby, Suspend, PowerOff or SoftOff), the idle handoff (15 minutes by default) and the wake delay (4 seconds by default).
+- **Idle monitors off**: see below.
+- **Detected displays**: the DDC/CI monitors found.
+- **Windows startup**: "Start DisplayLullaby when I sign in to Windows".
 
-Use Settings to capture new hotkeys, choose targets, change idle handoff timing, and save changes immediately.
+It also has Test primary, Test secondary and All off buttons. Changes are saved and applied immediately.
 
-The temporary standby keys wake on the same hotkey, any later key press, or mouse movement. Config targets should use `DISPLAY1` style device names; CLI commands also accept monitor IDs, `all`, or a description snippet like `Dell`. The `DISPLAYn` names are more stable than list IDs when a sleeping monitor temporarily disappears.
-
-F9 uses the Windows global monitor-off command. F10 and F11 use DDC/CI only for short temporary standby, then hand off to the Windows global monitor-off command after the configured idle period.
-
+A temporary standby wakes on the same hotkey, any other key press, or mouse movement. DDC/CI can become unreliable after a long standby, so after the idle handoff period without input DisplayLullaby wakes that monitor, waits for the wake delay, then turns all monitors off the Windows way. Set `TemporaryStandbyIdleMinutes=0` to disable the handoff.
 ## Idle monitors off
 
 Settings has an **Idle monitors off** option (off by default, 10 minutes by default, 1-1440 minutes). When it is on, DisplayLullaby turns all monitors off after that many minutes without keyboard or mouse input, using the same Windows global monitor-off command as F9 (`WM_SYSCOMMAND / SC_MONITORPOWER`, the signal Windows' own display timeout uses). Any input wakes the monitors.
@@ -71,14 +78,13 @@ Some monitors accept only one of these sleep/off values, so try another option i
 
 ## Session restore
 
-DisplayLullaby can bring back the apps that were running, and their window positions, after a reboot or crash.
-It saves a snapshot every few minutes and at shutdown under `%LOCALAPPDATA%\DisplayLullaby\Sessions`, then
-restores it automatically after the next login. The tray menu has `Session: snapshot now / restore now`.
-Settings are in
-`%LOCALAPPDATA%\DisplayLullaby\session-restore.ini`. The design is in `DESIGN-session-restore.md`.
+DisplayLullaby brings back the apps that were running, and their window positions, after Windows restarts (including after a crash). It is on by default. It records a snapshot every 3 minutes (1-60, configurable) and when Windows signals log off or shutdown, and keeps the last 5 under `%LOCALAPPDATA%\DisplayLullaby\Sessions`. It restores automatically only when Windows was restarted after the last snapshot, 20 seconds after sign-in by default.
+
+Apps that restore their own windows or tabs, such as browsers, are launched once instead of once per window. Shell and system processes such as File Explorer, Task Manager and Settings are ignored by default.
+
+Use **Session: settings...** in the tray menu to turn recording or automatic restore on or off, change the timings, and choose which apps to bring back. The settings are stored in `%LOCALAPPDATA%\DisplayLullaby\session-restore.ini`. The design is in `DESIGN-session-restore.md`.
 
 Tests for the platform-neutral logic: `dotnet test Tests/DisplayLullaby.Tests`.
-
 ## Building
 
 The app version prefix lives in `Version.props`. Release scripts fetch `origin/main`, count its commits, and build `DisplayLullabyVersionPrefix.<commit-count>`.
