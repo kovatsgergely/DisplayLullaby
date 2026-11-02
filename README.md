@@ -37,7 +37,7 @@ F10    temporary standby for DISPLAY1 until input
 F11    temporary standby for DISPLAY2 until input
 ```
 
-Use Settings to capture new hotkeys, choose targets, change idle handoff timing, and save changes immediately. You can still edit the config file directly and choose **Reload config file** from the tray menu.
+Use Settings to capture new hotkeys, choose targets, change idle handoff timing, and save changes immediately.
 
 The temporary standby keys wake on the same hotkey, any later key press, or mouse movement. Config targets should use `DISPLAY1` style device names; CLI commands also accept monitor IDs, `all`, or a description snippet like `Dell`. The `DISPLAYn` names are more stable than list IDs when a sleeping monitor temporarily disappears.
 
@@ -58,6 +58,16 @@ Laptop panels often do not support this path. Some docks, adapters, KVMs, or mon
 - `wake`: value `0x01`
 
 Some monitors accept only one of these sleep/off values, so try another option if the first command does not work.
+
+## Session restore
+
+DisplayLullaby can bring back the apps that were running, and their window positions, after a reboot or crash.
+It saves a snapshot every few minutes and at shutdown under `%LOCALAPPDATA%\DisplayLullaby\Sessions`, then
+restores it automatically after the next login. The tray menu has `Session: snapshot now / restore now`.
+Settings are in
+`%LOCALAPPDATA%\DisplayLullaby\session-restore.ini`. The design is in `DESIGN-session-restore.md`.
+
+Tests for the platform-neutral logic: `dotnet test Tests/DisplayLullaby.Tests`.
 
 ## Building
 

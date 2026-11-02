@@ -274,7 +274,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         };
     }
 
-    private static Bitmap LoadBitmapAsset(string assetUri)
+    internal static Bitmap LoadBitmapAsset(string assetUri)
     {
         using var stream = AssetLoader.Open(new Uri(assetUri));
         return new Bitmap(stream);
@@ -408,7 +408,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         return grid;
     }
 
-    private static Border Card(string title, Control content)
+    internal static Border Card(string title, Control content)
     {
         var stack = new StackPanel
         {
@@ -434,7 +434,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         };
     }
 
-    private static TextBlock HeaderText(string text) =>
+    internal static TextBlock HeaderText(string text) =>
         new()
         {
             Text = text,
@@ -442,7 +442,7 @@ internal sealed class AvaloniaSettingsWindow : Window
             Foreground = Palette.PrimaryText
         };
 
-    private static TextBlock Label(string text) =>
+    internal static TextBlock Label(string text) =>
         new()
         {
             Text = text,
@@ -451,13 +451,13 @@ internal sealed class AvaloniaSettingsWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         };
 
-    private static TextBlock Label(string text, string tooltip)
+    internal static TextBlock Label(string text, string tooltip)
     {
         var label = Label(text);
         return WithTooltip(label, tooltip);
     }
 
-    private static T WithTooltip<T>(T control, string tooltip)
+    internal static T WithTooltip<T>(T control, string tooltip)
         where T : Control
     {
         ToolTip.SetTip(control, new TextBlock
@@ -472,7 +472,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         return control;
     }
 
-    private static TextBlock Unit(string text) =>
+    internal static TextBlock Unit(string text) =>
         new()
         {
             Text = text,
@@ -495,7 +495,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         return panel;
     }
 
-    private static StackPanel ValueWithUnit(Control value, string unit)
+    internal static StackPanel ValueWithUnit(Control value, string unit)
     {
         var panel = new StackPanel
         {
@@ -518,7 +518,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         return button;
     }
 
-    private static Button PrimaryButton(string text, Action click, double minWidth)
+    internal static Button PrimaryButton(string text, Action click, double minWidth)
     {
         var button = Button(text, click, minWidth);
         button.Background = Palette.PrimaryButtonBackground;
@@ -527,9 +527,9 @@ internal sealed class AvaloniaSettingsWindow : Window
         return button;
     }
 
-    private static Button SecondaryButton(string text, Action click, double minWidth) => Button(text, click, minWidth);
+    internal static Button SecondaryButton(string text, Action click, double minWidth) => Button(text, click, minWidth);
 
-    private static Button Button(string text, Action click, double minWidth)
+    internal static Button Button(string text, Action click, double minWidth)
     {
         var button = new Button
         {
@@ -571,7 +571,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         return combo;
     }
 
-    private static TextBox NumberBox(string text, double width) =>
+    internal static TextBox NumberBox(string text, double width) =>
         new()
         {
             Text = text,
@@ -608,7 +608,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         }
     }
 
-    private static void AddCell(Grid grid, Control control, int row, int column, int columnSpan = 1)
+    internal static void AddCell(Grid grid, Control control, int row, int column, int columnSpan = 1)
     {
         Grid.SetRow(control, row);
         Grid.SetColumn(control, column);
@@ -1123,7 +1123,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         _statusBox.IsVisible = text.Length > 0;
     }
 
-    private static DisplayLullabyPalette Palette => DisplayLullabyTheme.Current;
+    internal static DisplayLullabyPalette Palette => DisplayLullabyTheme.Current;
 
     private enum CaptureTarget
     {
