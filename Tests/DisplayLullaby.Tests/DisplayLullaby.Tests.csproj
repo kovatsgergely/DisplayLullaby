@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    Tests the platform-neutral session restore logic. The core files are linked (not referenced)
+    Tests the platform-neutral logic. Source files are linked (not referenced)
     so the tests run on any OS without the Windows/Avalonia app project.
   -->
   <PropertyGroup>
@@ -12,6 +12,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\SessionRestore\Core\*.cs" Link="Core\%(Filename)%(Extension)" />
+    <Compile Include="..\..\IdleDisplaysOff\IdleDisplayOffPolicy.cs" Link="IdleDisplaysOff\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

@@ -25,7 +25,9 @@ internal sealed record AppSettings(
     string SecondaryStandbyTarget,
     MonitorPowerMode PowerMode,
     int TemporaryStandbyIdleMinutes,
-    int TemporaryStandbyWakeDelaySeconds);
+    int TemporaryStandbyWakeDelaySeconds,
+    bool IdleDisplaysOffEnabled,
+    int IdleDisplaysOffMinutes);
 
 internal sealed class AppConfig
 {
@@ -54,18 +56,26 @@ internal sealed class AppConfig
         TemporaryStandbyWakeDelaySeconds=4
         Hotkey=F10 temporary-standby DISPLAY1
         Hotkey=F11 temporary-standby DISPLAY2
+
+        # Turn all monitors off (F9-style Windows global monitor-off) after this many
+        # minutes without keyboard/mouse input. Skipped while video playback, a
+        # presentation, or a full-screen app keeps the display on. Any input wakes them.
+        IdleDisplaysOffEnabled=false
+        IdleDisplaysOffMinutes=10
         """;
 
     private AppConfig(
         MonitorPowerMode sleepMode,
         int temporaryStandbyIdleMinutes,
         int temporaryStandbyWakeDelaySeconds,
+        IdleDisplayOffSettings idleDisplaysOff,
         IReadOnlyList<HotkeyBinding> hotkeys,
         IReadOnlyList<string> warnings)
     {
         SleepMode = sleepMode;
         TemporaryStandbyIdleMinutes = temporaryStandbyIdleMinutes;
         TemporaryStandbyWakeDelaySeconds = temporaryStandbyWakeDelaySeconds;
+        IdleDisplaysOff = idleDisplaysOff;
         Hotkeys = hotkeys;
         Warnings = warnings;
     }
@@ -75,6 +85,8 @@ internal sealed class AppConfig
     public int TemporaryStandbyIdleMinutes { get; }
 
     public int TemporaryStandbyWakeDelaySeconds { get; }
+
+    public IdleDisplayOffSettings IdleDisplaysOff { get; }
 
     public IReadOnlyList<HotkeyBinding> Hotkeys { get; }
 
@@ -124,7 +136,9 @@ internal sealed class AppConfig
             NormalizeRemovedRoleTarget(string.IsNullOrWhiteSpace(secondary?.Target) ? "DISPLAY2" : secondary.Target),
             SleepMode,
             TemporaryStandbyIdleMinutes,
-            TemporaryStandbyWakeDelaySeconds);
+            TemporaryStandbyWakeDelaySeconds,
+            IdleDisplaysOff.Enabled,
+            IdleDisplaysOff.WaitMinutes);
     }
 
     public static void SaveSettings(AppSettings settings)
@@ -191,6 +205,12 @@ internal sealed class AppConfig
         if (settings.TemporaryStandbyWakeDelaySeconds is < 0 or > 60)
         {
             warning = "Wake delay seconds must be between 0 and 60.";
+            return false;
+        }
+
+        if (!IdleDisplayOffSettings.IsValidWaitMinutes(settings.IdleDisplaysOffMinutes))
+        {
+            warning = $"Idle monitors-off minutes must be between {IdleDisplayOffSettings.MinWaitMinutes} and {IdleDisplayOffSettings.MaxWaitMinutes}.";
             return false;
         }
 
@@ -365,6 +385,11 @@ internal sealed class AppConfig
             Hotkey={settings.GlobalOffHotkey.Trim()} global-off all
             Hotkey={settings.PrimaryStandbyHotkey.Trim()} temporary-standby {primaryTarget}
             Hotkey={settings.SecondaryStandbyHotkey.Trim()} temporary-standby {secondaryTarget}
+
+            # After IdleDisplaysOffMinutes without keyboard/mouse input, turn all monitors off with the F9-style
+            # Windows global monitor-off command. Skipped while video, a presentation, or a full-screen app keeps the display on.
+            IdleDisplaysOffEnabled={IdleDisplayOffSettings.SerializeEnabled(settings.IdleDisplaysOffEnabled)}
+            IdleDisplaysOffMinutes={settings.IdleDisplaysOffMinutes}
             """;
     }
 
@@ -421,6 +446,7 @@ internal sealed class AppConfig
         var sleepMode = MonitorPowerMode.Standby;
         var temporaryStandbyIdleMinutes = 15;
         var temporaryStandbyWakeDelaySeconds = 4;
+        var idleDisplaysOff = IdleDisplayOffSettings.Default;
         var hotkeys = new List<HotkeyBinding>();
         var warnings = new List<string>();
         var nextHotkeyId = 100;
@@ -479,6 +505,28 @@ internal sealed class AppConfig
                     warnings.Add($"Line {lineNumber}: TemporaryStandbyWakeDelaySeconds must be between 0 and 60.");
                 }
             }
+            else if (name.Equals("IdleDisplaysOffEnabled", StringComparison.OrdinalIgnoreCase))
+            {
+                if (IdleDisplayOffSettings.TryParseEnabled(value, out var parsedEnabled))
+                {
+                    idleDisplaysOff = idleDisplaysOff with { Enabled = parsedEnabled };
+                }
+                else
+                {
+                    warnings.Add($"Line {lineNumber}: IdleDisplaysOffEnabled must be true or false.");
+                }
+            }
+            else if (name.Equals("IdleDisplaysOffMinutes", StringComparison.OrdinalIgnoreCase))
+            {
+                if (TryParseIntSetting(value, IdleDisplayOffSettings.MinWaitMinutes, IdleDisplayOffSettings.MaxWaitMinutes, out var parsedIdleMinutes))
+                {
+                    idleDisplaysOff = idleDisplaysOff with { WaitMinutes = parsedIdleMinutes };
+                }
+                else
+                {
+                    warnings.Add($"Line {lineNumber}: IdleDisplaysOffMinutes must be between {IdleDisplayOffSettings.MinWaitMinutes} and {IdleDisplayOffSettings.MaxWaitMinutes}.");
+                }
+            }
             else if (name.Equals("Hotkey", StringComparison.OrdinalIgnoreCase))
             {
                 if (TryParseHotkey(value, nextHotkeyId, out var hotkey, out var warning))
@@ -498,7 +546,7 @@ internal sealed class AppConfig
         }
 
         AddDuplicateHotkeyWarnings(hotkeys, warnings);
-        return new AppConfig(sleepMode, temporaryStandbyIdleMinutes, temporaryStandbyWakeDelaySeconds, hotkeys, warnings);
+        return new AppConfig(sleepMode, temporaryStandbyIdleMinutes, temporaryStandbyWakeDelaySeconds, idleDisplaysOff, hotkeys, warnings);
     }
 
     private static void AddDuplicateHotkeyWarnings(IReadOnlyList<HotkeyBinding> hotkeys, List<string> warnings)

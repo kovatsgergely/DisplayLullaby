@@ -22,6 +22,8 @@ internal sealed unsafe class TrayApplication
     private const int TemporaryStandbyInputGraceMs = 1200;
     private static readonly nuint TemporaryStandbyTimerId = 1;
     private static readonly nuint TemporaryStandbyWakeDelayTimerId = 2;
+    private const uint IdleDisplayOffPollIntervalMs = 5000;
+    private static readonly nuint IdleDisplayOffTimerId = 3;
 
     private static readonly NativeMethods.WndProc WindowProc = WndProc;
     private static TrayApplication? _current;
@@ -40,6 +42,8 @@ internal sealed unsafe class TrayApplication
     private bool _temporaryStandbyWakeDelayTimerRunning;
     private SessionRestoreController? _sessionRestore;
     private SessionSettingsWindow? _sessionSettingsWindow;
+    private readonly IdleDisplayOffTracker _idleDisplayOff = new();
+    private bool _idleDisplayOffTimerRunning;
 
     public static int Run()
     {
@@ -60,6 +64,7 @@ internal sealed unsafe class TrayApplication
         AddTrayIcon("DisplayLullaby");
         RegisterConfiguredHotkeys(showWarnings: true);
         StartSessionRestore();
+        UpdateIdleDisplayOffTimer();
 
         while (NativeMethods.GetMessage(out var message, IntPtr.Zero, 0, 0))
         {
@@ -71,6 +76,7 @@ internal sealed unsafe class TrayApplication
         StopTemporaryStandbyTimer();
         StopTemporaryStandbyWakeDelayTimer();
         _sessionRestore?.Dispose();
+        StopIdleDisplayOffTimer();
         _settingsWindow?.Close();
         _sessionSettingsWindow?.Close();
         _helpPopup?.Destroy();
@@ -219,6 +225,7 @@ internal sealed unsafe class TrayApplication
         _config = AppConfig.LoadOrCreate();
         RegisterConfiguredHotkeys(showWarnings: true);
         _sessionRestore?.Reload();
+        UpdateIdleDisplayOffTimer();
         if (showBalloon)
         {
             ShowBalloon("DisplayLullaby", "Configuration reloaded.");
@@ -230,12 +237,7 @@ internal sealed unsafe class TrayApplication
         if (action == TrayAction.GlobalOff)
         {
             ClearTemporaryStandby();
-            _helpPopup?.Hide();
-            if (!MonitorController.TrySendGlobalPowerOff())
-            {
-                ShowBalloon("DisplayLullaby", $"Could not turn monitors off: {NativeMethods.LastErrorMessage()}");
-            }
-
+            SendAllMonitorsOff("Could not turn monitors off");
             return;
         }
 
@@ -765,11 +767,65 @@ internal sealed unsafe class TrayApplication
 
     private void SendGlobalPowerOffAfterTemporaryStandby()
     {
+        SendAllMonitorsOff("Could not turn monitors off after temporary standby");
+    }
+
+    // Shared by F9 (global-off), the temporary standby handoff, and idle monitors-off:
+    // WM_SYSCOMMAND / SC_MONITORPOWER (2) broadcast, the same signal as Windows' display-off timeout.
+    private void SendAllMonitorsOff(string failurePrefix)
+    {
         _helpPopup?.Hide();
         if (!MonitorController.TrySendGlobalPowerOff())
         {
-            ShowBalloon("DisplayLullaby", $"Could not turn monitors off after temporary standby: {NativeMethods.LastErrorMessage()}");
+            ShowBalloon("DisplayLullaby", $"{failurePrefix}: {NativeMethods.LastErrorMessage()}");
         }
+    }
+
+    private void UpdateIdleDisplayOffTimer()
+    {
+        _idleDisplayOff.Reset();
+        if (!_config.IdleDisplaysOff.Enabled)
+        {
+            StopIdleDisplayOffTimer();
+            return;
+        }
+
+        if (_idleDisplayOffTimerRunning)
+        {
+            return;
+        }
+
+        if (NativeMethods.SetTimer(_hwnd, IdleDisplayOffTimerId, IdleDisplayOffPollIntervalMs, IntPtr.Zero) == 0)
+        {
+            ShowBalloon("DisplayLullaby", $"Could not start idle monitors-off timer: {NativeMethods.LastErrorMessage()}");
+            return;
+        }
+
+        _idleDisplayOffTimerRunning = true;
+    }
+
+    private void StopIdleDisplayOffTimer()
+    {
+        if (!_idleDisplayOffTimerRunning)
+        {
+            return;
+        }
+
+        NativeMethods.KillTimer(_hwnd, IdleDisplayOffTimerId);
+        _idleDisplayOffTimerRunning = false;
+    }
+
+    private void CheckIdleDisplayOff()
+    {
+        var decision = _idleDisplayOff.Evaluate(_config.IdleDisplaysOff, IdleSystemProbe.Capture());
+        if (decision != IdleDisplayOffDecision.Fire)
+        {
+            return;
+        }
+
+        // Deliberately does not clear an active temporary standby: if the user comes back, its input
+        // detection still wakes the DDC/CI monitor that F10/F11 put into standby.
+        SendAllMonitorsOff("Could not turn monitors off after idle");
     }
 
     private bool TemporaryStandbyMatches(string target)
@@ -874,6 +930,12 @@ internal sealed unsafe class TrayApplication
                     return 0;
                 }
 
+                if (wParam == IdleDisplayOffTimerId)
+                {
+                    CheckIdleDisplayOff();
+                    return 0;
+                }
+
                 return 0;
 
             case NativeMethods.WmHotkey:
@@ -895,6 +957,7 @@ internal sealed unsafe class TrayApplication
             case NativeMethods.WmDestroy:
                 StopTemporaryStandbyTimer();
                 StopTemporaryStandbyWakeDelayTimer();
+                StopIdleDisplayOffTimer();
                 NativeMethods.PostQuitMessage(0);
                 return 0;
 

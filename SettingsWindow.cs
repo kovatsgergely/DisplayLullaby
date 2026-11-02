@@ -84,6 +84,7 @@ internal sealed class AvaloniaSettingsWindow : Window
     private const string DdcModeTooltip = "DDC/CI command, monitor support varies.";
     private const string IdleTooltip = "No keyboard or mouse input for this long after temporary standby.";
     private const string WakeDelayTooltip = "Wait this long after waking the monitor, then send Windows global standby.";
+    private const string IdleOffTooltip = "Turn all monitors off with the Windows monitor-off command after this long without keyboard or mouse input. Skipped while video, a presentation, or a full-screen app keeps the display on. Any input wakes them.";
     private const string StartupTooltip = "Launch DisplayLullaby automatically after you sign in to Windows.";
 
     private readonly Action _onSaved;
@@ -102,6 +103,8 @@ internal sealed class AvaloniaSettingsWindow : Window
     private readonly TextBox _idleMinutesTextBox;
     private readonly TextBox _wakeDelayTextBox;
     private readonly CheckBox _startupCheckBox;
+    private readonly CheckBox _idleOffCheckBox;
+    private readonly TextBox _idleOffMinutesTextBox;
     private readonly TargetOption[] _targetOptions;
     private readonly bool _secondaryControlsEnabled;
     private AppSettings _settings;
@@ -172,6 +175,10 @@ internal sealed class AvaloniaSettingsWindow : Window
         _idleMinutesTextBox = NumberBox(settings.TemporaryStandbyIdleMinutes.ToString(), 52);
         _wakeDelayTextBox = NumberBox(settings.TemporaryStandbyWakeDelaySeconds.ToString(), 52);
         _startupCheckBox = StartupCheckBox();
+        _idleOffCheckBox = IdleOffCheckBox(settings.IdleDisplaysOffEnabled);
+        _idleOffMinutesTextBox = NumberBox(settings.IdleDisplaysOffMinutes.ToString(), 52);
+        _idleOffMinutesTextBox.IsEnabled = settings.IdleDisplaysOffEnabled;
+        _idleOffCheckBox.IsCheckedChanged += (_, _) => _idleOffMinutesTextBox.IsEnabled = _idleOffCheckBox.IsChecked == true;
 
         Content = BuildContent();
         ApplyTargetAvailability();
@@ -207,6 +214,7 @@ internal sealed class AvaloniaSettingsWindow : Window
         };
         body.Children.Add(BuildHotkeyCard());
         body.Children.Add(BuildBehaviorCard());
+        body.Children.Add(BuildIdleOffCard());
         body.Children.Add(BuildStartupCard());
         body.Children.Add(BuildDisplaysCard());
 
@@ -338,6 +346,25 @@ internal sealed class AvaloniaSettingsWindow : Window
         AddCell(grid, WakeDelayGroup(), 1, 3);
 
         return Card("Standby behavior", grid);
+    }
+
+    private Control BuildIdleOffCard()
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(1, GridUnitType.Star)
+            },
+            ColumnSpacing = 8
+        };
+
+        AddCell(grid, WithTooltip(_idleOffCheckBox, IdleOffTooltip), 0, 0);
+        AddCell(grid, ValueWithUnit(WithTooltip(_idleOffMinutesTextBox, IdleOffTooltip), "min"), 0, 1);
+
+        return Card("Idle monitors off", grid);
     }
 
     private Control BuildDisplaysCard()
@@ -595,6 +622,20 @@ internal sealed class AvaloniaSettingsWindow : Window
                 VerticalAlignment = VerticalAlignment.Center
             },
             IsChecked = StartupRegistration.IsEnabled,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+    private static CheckBox IdleOffCheckBox(bool isChecked) =>
+        new()
+        {
+            Content = new TextBlock
+            {
+                Text = "Turn all monitors off after no input for",
+                FontSize = 13,
+                Foreground = Palette.PrimaryText,
+                VerticalAlignment = VerticalAlignment.Center
+            },
+            IsChecked = isChecked,
             VerticalAlignment = VerticalAlignment.Center
         };
 
@@ -881,6 +922,12 @@ internal sealed class AvaloniaSettingsWindow : Window
             return false;
         }
 
+        if (!int.TryParse((_idleOffMinutesTextBox.Text ?? string.Empty).Trim(), out var idleOffMinutes))
+        {
+            warning = "Idle monitors-off minutes must be a number.";
+            return false;
+        }
+
         var primaryTarget = SelectedTargetValue(_primaryTargetCombo, _settings.PrimaryStandbyTarget);
         var secondaryTarget = SelectedTargetValue(_secondaryTargetCombo, _settings.SecondaryStandbyTarget);
         var powerMode = ParsePowerMode(_powerModeCombo.SelectedItem as string ?? SerializePowerMode(_settings.PowerMode));
@@ -891,7 +938,9 @@ internal sealed class AvaloniaSettingsWindow : Window
             SecondaryStandbyTarget = secondaryTarget,
             PowerMode = powerMode,
             TemporaryStandbyIdleMinutes = idleMinutes,
-            TemporaryStandbyWakeDelaySeconds = wakeDelaySeconds
+            TemporaryStandbyWakeDelaySeconds = wakeDelaySeconds,
+            IdleDisplaysOffEnabled = _idleOffCheckBox.IsChecked == true,
+            IdleDisplaysOffMinutes = idleOffMinutes
         };
 
         return true;
