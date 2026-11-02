@@ -37,7 +37,7 @@ F10    temporary standby for DISPLAY1 until input
 F11    temporary standby for DISPLAY2 until input
 ```
 
-Use Settings to capture new hotkeys, choose targets, change idle handoff timing, and save changes immediately. You can still edit the config file directly and choose **Reload config file** from the tray menu.
+Use Settings to capture new hotkeys, choose targets, change idle handoff timing, and save changes immediately.
 
 The temporary standby keys wake on the same hotkey, any later key press, or mouse movement. Config targets should use `DISPLAY1` style device names; CLI commands also accept monitor IDs, `all`, or a description snippet like `Dell`. The `DISPLAYn` names are more stable than list IDs when a sleeping monitor temporarily disappears.
 

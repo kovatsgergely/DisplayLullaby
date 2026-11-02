@@ -109,7 +109,7 @@ snapshots are frozen until `WM_ENDSESSION` reports the shutdown was cancelled.
 
 `%LOCALAPPDATA%\DisplayLullaby\session-restore.ini`, same `Name=Value` / `#` format as `config.ini`, but a
 separate file because `AppConfig.SaveSettings` rewrites `config.ini` from scratch. Created with defaults on
-first run; "Reload config file" reloads it. Keys: `Enabled`, `RestoreOnStartup`, `SnapshotIntervalMinutes`,
+first run. Keys: `Enabled`, `RestoreOnStartup`, `SnapshotIntervalMinutes`,
 `StartupDelaySeconds` (default 20, lets the shell settle), `WindowWaitSeconds`, `KeepSnapshots`, repeated
 `Ignore=` rules (process name, exe path, or AUMID, `*`/`?` wildcards), optional `SelfRestoring=` and
 `DropArgument=` overrides (a non-empty list replaces the built-in one).

@@ -458,7 +458,6 @@ internal sealed unsafe class TrayApplication
             NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
             AppendSessionRestoreMenu(menu);
             NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
-            NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuReload, "Reload config file");
             NativeMethods.AppendMenu(menu, NativeMethods.MfString, MenuExit, "Exit");
 
             if (!NativeMethods.GetCursorPos(out var point))
@@ -494,12 +493,6 @@ internal sealed unsafe class TrayApplication
         if (command == MenuExit)
         {
             NativeMethods.DestroyWindow(_hwnd);
-            return;
-        }
-
-        if (command == MenuReload)
-        {
-            ReloadConfiguration();
             return;
         }
 
