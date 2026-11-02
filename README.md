@@ -63,16 +63,25 @@ Some monitors accept only one of these sleep/off values, so try another option i
 
 The app version prefix lives in `Version.props`. Release scripts fetch `origin/main`, count its commits, and build `DisplayLullabyVersionPrefix.<commit-count>`.
 
-Create the signed release build:
-
-```powershell
-.\Publish-Release.ps1
-```
-
-Create the signed MSI installer:
+Build a release with one command (Windows, PowerShell 7):
 
 ```powershell
 .\Build-Installer.ps1
 ```
 
-The MSI is written to `Release\DisplayLullaby-<version>-x64.msi`. It installs per user under `%LOCALAPPDATA%\Programs\DisplayLullaby`, creates a Start Menu shortcut, and offers an optional `Start with Windows` feature during setup. The optional startup feature writes an HKCU Run entry and is off by default. The same startup entry can also be changed later from the settings window.
+This publishes the Native AOT build into `Release\`, signs `DisplayLullaby.exe`, checks that the publish output matches the files listed in `Installer\Product.wxs` (the build fails if a native DLL is missing or new), builds `Release\DisplayLullaby-<version>-x64.msi` with WiX 7, and signs the MSI.
+
+Signing uses Azure Artifact Signing (`Sign-Artifact.ps1`: account `M3AITechnologyCorp`, profile `M3ProductivitySoftware`). It needs the Windows SDK `signtool.exe`, Microsoft Artifact Signing Client Tools, and an Azure CLI login as `build@m3corp.ai` in `%LOCALAPPDATA%\SystemInfo\AzureCliBuild`:
+
+```powershell
+$env:AZURE_CONFIG_DIR = "$env:LOCALAPPDATA\SystemInfo\AzureCliBuild"; az login
+```
+
+Options:
+
+- `-SkipSigning`: build an unsigned exe and MSI for local testing.
+- `-GitHubRelease`: create GitHub release `v<version>` (draft) with the signed MSI attached. Add `-PublishRelease` to publish it right away, or `-DryRun` to only print the `gh` command. Run it from `main`.
+
+`.\Publish-Release.ps1 [-SkipSigning]` still publishes and signs only the exe.
+
+The MSI installs per user under `%LOCALAPPDATA%\Programs\DisplayLullaby`, creates no shortcuts, and adds the HKCU Run entry so DisplayLullaby starts at sign-in (you can turn that off later in Settings). New versions upgrade in place: the installer closes a running DisplayLullaby first and the finish page can launch the new version. Uninstalling removes the program and the Run entry but keeps your settings in `%LOCALAPPDATA%\DisplayLullaby`.

@@ -1,6 +1,8 @@
-<Project Sdk="WixToolset.Sdk/6.0.0">
+<Project Sdk="WixToolset.Sdk/7.0.1">
   <Import Project="..\Version.props" />
   <PropertyGroup>
+    <!-- Explicit acceptance required by WiX v7; see https://wixtoolset.org/osmf/. -->
+    <AcceptEula>wix7</AcceptEula>
     <OutputName>DisplayLullaby-$(DisplayLullabyVersion)-x64</OutputName>
     <OutputPath>..\Release\</OutputPath>
     <IntermediateOutputPath>obj\$(Configuration)\</IntermediateOutputPath>
@@ -9,6 +11,7 @@
     <SuppressIces>ICE91</SuppressIces>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="WixToolset.UI.wixext" Version="6.0.0" />
+    <PackageReference Include="WixToolset.UI.wixext" Version="7.0.1" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="7.0.1" />
   </ItemGroup>
 </Project>
