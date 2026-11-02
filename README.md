@@ -84,4 +84,4 @@ Options:
 
 `.\Publish-Release.ps1 [-SkipSigning]` still publishes and signs only the exe.
 
-The MSI installs per user under `%LOCALAPPDATA%\Programs\DisplayLullaby`, creates no shortcuts, and adds the HKCU Run entry so DisplayLullaby starts at sign-in (you can turn that off later in Settings). New versions upgrade in place: the installer closes a running DisplayLullaby first and the finish page can launch the new version. Uninstalling removes the program and the Run entry but keeps your settings in `%LOCALAPPDATA%\DisplayLullaby`.
+The MSI installs per user under `%LOCALAPPDATA%\Programs\DisplayLullaby`, creates no shortcuts, and on first install adds the HKCU Run entry so DisplayLullaby starts at sign-in. Turn it off in Settings and upgrades or repairs keep it off. New versions upgrade in place: the installer closes a running DisplayLullaby first and the finish page can launch the new version. Uninstalling removes the program and the Run entry but keeps your settings in `%LOCALAPPDATA%\DisplayLullaby`.
