@@ -1,8 +1,12 @@
 # DisplayLullaby
 
-DisplayLullaby is a tiny Windows utility that controls individual external monitors through DDC/CI.
+DisplayLullaby is a tiny Windows tray app for putting displays to sleep. It turns all monitors off with the Windows method or puts individual external monitors into standby through DDC/CI, using configurable hotkeys. It can also turn monitors off automatically after an idle period and restore your running apps and window positions after a reboot or crash.
 
-Your original PowerShell command broadcasts `WM_SYSCOMMAND / SC_MONITORPOWER` to Windows, so it applies to every display. DisplayLullaby uses the monitor-control API in `dxva2.dll` and sends VCP power-mode commands to one physical monitor at a time.
+## Install
+
+Download the signed `DisplayLullaby-<version>-x64.msi` from [Releases](https://github.com/kovatsgergely/DisplayLullaby/releases/latest) and run it. It installs for the current user only, needs no admin rights, and starts DisplayLullaby at sign-in.
+
+Turning all monitors off uses the Windows `WM_SYSCOMMAND / SC_MONITORPOWER` command. Per-monitor standby uses the monitor-control API in `dxva2.dll` and sends VCP power-mode commands to one physical monitor at a time.
 
 ## Commands
 
@@ -19,7 +23,7 @@ DisplayLullaby tray
 
 Running `DisplayLullaby.exe` with no arguments starts the tray app.
 
-Left-click the tray icon to show Help. Right-click the tray icon for Settings, reload, test, and exit commands.
+Left-click the tray icon to show Help. Right-click the tray icon for Settings, session restore, and exit commands.
 
 ## Tray hotkeys
 
