@@ -1,6 +1,9 @@
 # DisplayLullaby
 
-DisplayLullaby is a tiny Windows tray app for putting displays to sleep. It turns all monitors off with the Windows method or puts individual external monitors into standby through DDC/CI, using configurable hotkeys. It can also turn monitors off automatically after an idle period and restore your running apps and window positions after a reboot or crash.
+DisplayLullaby is a tiny Windows tray app that does two things:
+
+- **Puts your displays to sleep.** It turns all monitors off the Windows way, or puts individual external monitors into standby through DDC/CI, with configurable hotkeys. It can also turn all monitors off automatically after an idle period.
+- **Restores your session.** After Windows restarts, including after a crash, it reopens the apps you had running and puts their windows back where they were.
 
 ## Install
 
