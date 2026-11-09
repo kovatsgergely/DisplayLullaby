@@ -188,9 +188,18 @@ internal static unsafe class WindowCapture
         // Borderless/fullscreen-style apps (ImageGlass) stay SW_SHOWNORMAL while covering a monitor.
         // WINDOWPLACEMENT is in workspace coordinates, so compare the real screen rect instead.
         FillMonitorRef? fills = null;
-        if (state == WindowShowState.Normal && GetWindowRect(hwnd, out var screen))
+        WindowArrangement? arrangement = null;
+        if (state == WindowShowState.Normal)
         {
-            fills = MonitorFill.Detect(ToRect(screen), monitors);
+            var screen = TryGetVisibleBounds(hwnd);
+            if (screen is { } visible)
+            {
+                fills = MonitorFill.Detect(visible, monitors);
+                if (fills is null)
+                {
+                    arrangement = SnapArrangement.Detect(visible, monitors);
+                }
+            }
         }
 
         window = new WindowSnapshot(
@@ -199,8 +208,25 @@ internal static unsafe class WindowCapture
             normal,
             state,
             GetMonitorDevice(hwnd),
-            fills);
+            fills,
+            arrangement);
         return true;
+    }
+
+    /// <summary>
+    /// Visible frame in physical pixels. Prefer DWM extended bounds (excludes invisible resize borders);
+    /// fall back to GetWindowRect.
+    /// </summary>
+    private static WindowRect? TryGetVisibleBounds(nint hwnd)
+    {
+        if (DwmGetWindowAttributeRect(hwnd, DwmwaExtendedFrameBounds, out var frame, sizeof(Rect)) == 0
+            && frame.Right > frame.Left
+            && frame.Bottom > frame.Top)
+        {
+            return ToRect(frame);
+        }
+
+        return GetWindowRect(hwnd, out var screen) ? ToRect(screen) : null;
     }
 
     private static string? GetMonitorDevice(nint hwnd)

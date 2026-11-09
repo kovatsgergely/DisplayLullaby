@@ -109,3 +109,45 @@ internal static class PlacementPlanner
         return dw * dw + dh * dh;
     }
 }
+
+/// <summary>Detect left/right half snap from a window on-screen bounds vs monitor work areas.</summary>
+internal static class SnapArrangement
+{
+    public static WindowArrangement? Detect(
+        WindowRect windowBounds,
+        IReadOnlyList<MonitorSnapshot> monitors,
+        int tolerance = MonitorFill.DefaultTolerancePx)
+    {
+        foreach (var monitor in monitors)
+        {
+            var left = LeftHalf(monitor.WorkArea);
+            var right = RightHalf(monitor.WorkArea);
+            if (MonitorFill.NearlyEquals(windowBounds, left, tolerance))
+            {
+                return WindowArrangement.LeftHalf;
+            }
+
+            if (MonitorFill.NearlyEquals(windowBounds, right, tolerance))
+            {
+                return WindowArrangement.RightHalf;
+            }
+        }
+
+        return null;
+    }
+
+    public static WindowRect TargetHalf(WindowRect workArea, WindowArrangement arrangement) =>
+        arrangement == WindowArrangement.LeftHalf ? LeftHalf(workArea) : RightHalf(workArea);
+
+    public static WindowRect LeftHalf(WindowRect workArea)
+    {
+        var mid = workArea.Left + workArea.Width / 2;
+        return new WindowRect(workArea.Left, workArea.Top, mid, workArea.Bottom);
+    }
+
+    public static WindowRect RightHalf(WindowRect workArea)
+    {
+        var mid = workArea.Left + workArea.Width / 2;
+        return new WindowRect(mid, workArea.Top, workArea.Right, workArea.Bottom);
+    }
+}

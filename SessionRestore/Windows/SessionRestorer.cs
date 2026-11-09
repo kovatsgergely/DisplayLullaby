@@ -3,7 +3,7 @@ using static DisplayLullaby.SessionRestore.SessionNative;
 
 namespace DisplayLullaby.SessionRestore;
 
-internal sealed record RestoreResult(int Launched, int Placed, int Skipped, IReadOnlyList<string> Errors);
+internal sealed record RestoreResult(int Launched, int Placed, int Skipped, IReadOnlyList<string> Errors, int Snapped = 0, int SnapFailed = 0);
 
 /// <summary>Executes a restore plan: launch missing apps, wait for their windows, apply placements.</summary>
 internal sealed unsafe class SessionRestorer(SessionRestoreSettings settings)
@@ -23,7 +23,7 @@ internal sealed unsafe class SessionRestorer(SessionRestoreSettings settings)
             settings.SelfRestoring.ToArray(),
             Process.GetCurrentProcess().ProcessName);
 
-        int launched = 0, placed = 0, skipped = 0;
+        int launched = 0, placed = 0, skipped = 0, snapped = 0, snapFailed = 0;
         var errors = new List<string>();
         var usedWindows = new HashSet<nint>();
 
@@ -49,10 +49,24 @@ internal sealed unsafe class SessionRestorer(SessionRestoreSettings settings)
                 var windows = WaitForWindows(item.App, item.Action == RestoreAction.LaunchAndPlace ? existingPids : null, usedWindows, cancellationToken);
                 foreach (var (saved, live) in WindowMatcher.Match(item.App.Windows, windows))
                 {
-                    if (Apply(live.Handle, saved, monitors))
+                    var outcome = Apply(live.Handle, saved, monitors);
+                    if (outcome.Placed)
                     {
                         usedWindows.Add(live.Handle);
                         placed++;
+                    }
+
+                    if (outcome.Snap == SnapOutcome.Snapped)
+                    {
+                        snapped++;
+                    }
+                    else if (outcome.Snap == SnapOutcome.Failed)
+                    {
+                        snapFailed++;
+                        if (!string.IsNullOrEmpty(outcome.SnapDetail))
+                        {
+                            errors.Add($"{item.App.ProcessName}: {outcome.SnapDetail}");
+                        }
                     }
                 }
 
@@ -65,7 +79,7 @@ internal sealed unsafe class SessionRestorer(SessionRestoreSettings settings)
             }
         }
 
-        return new RestoreResult(launched, placed, skipped, errors);
+        return new RestoreResult(launched, placed, skipped, errors, snapped, snapFailed);
     }
 
     private void Launch(AppSnapshot app)
@@ -150,11 +164,11 @@ internal sealed unsafe class SessionRestorer(SessionRestoreSettings settings)
         }
     }
 
-    private static bool Apply(nint hwnd, WindowSnapshot saved, IReadOnlyList<MonitorSnapshot> monitors)
+    private static ApplyOutcome Apply(nint hwnd, WindowSnapshot saved, IReadOnlyList<MonitorSnapshot> monitors)
     {
         if (!IsWindow(hwnd))
         {
-            return false;
+            return ApplyOutcome.Missed;
         }
 
         var b = PlacementPlanner.ResolveNormalBounds(saved, monitors);
@@ -173,7 +187,7 @@ internal sealed unsafe class SessionRestorer(SessionRestoreSettings settings)
         // SetWindowPlacement clamps rectangles onto a visible monitor if the saved monitor is gone.
         if (!SetWindowPlacement(hwnd, ref placement))
         {
-            return false;
+            return ApplyOutcome.Missed;
         }
 
         if (saved.FillsMonitor is not null && saved.ShowState == WindowShowState.Normal)
@@ -185,6 +199,234 @@ internal sealed unsafe class SessionRestorer(SessionRestoreSettings settings)
             SetWindowPos(hwnd, 0, b.Left, b.Top, b.Width, b.Height, flags);
         }
 
-        return true;
+        if (saved.Arrangement is { } arrangement && saved.ShowState == WindowShowState.Normal)
+        {
+            return ApplySnap(hwnd, saved, arrangement, monitors);
+        }
+
+        return ApplyOutcome.PlacedOnly;
+    }
+
+    private static ApplyOutcome ApplySnap(
+        nint hwnd,
+        WindowSnapshot saved,
+        WindowArrangement arrangement,
+        IReadOnlyList<MonitorSnapshot> monitors)
+    {
+        var monitor = ResolveSnapMonitor(saved, monitors);
+        if (monitor is null)
+        {
+            System.Diagnostics.Debug.WriteLine($"Snap skip: no monitor for '{saved.Title}'");
+            return ApplyOutcome.PlacedOnly;
+        }
+
+        var target = SnapArrangement.TargetHalf(monitor.WorkArea, arrangement);
+        if (MatchesHalf(hwnd, target))
+        {
+            System.Diagnostics.Debug.WriteLine($"Snap already matched for '{saved.Title}' ({arrangement})");
+            return new ApplyOutcome(true, SnapOutcome.Snapped, null);
+        }
+
+        // Seed a floating size on the target monitor so Win+Arrow snaps instead of cycling monitors.
+        SeedOnMonitor(hwnd, monitor.WorkArea, arrangement);
+
+        if (!TryBringToForeground(hwnd))
+        {
+            var detail = $"snap skipped (could not focus '{saved.Title}')";
+            System.Diagnostics.Debug.WriteLine(detail);
+            return new ApplyOutcome(true, SnapOutcome.Failed, detail);
+        }
+
+        var electron = saved.ClassName.Equals("Chrome_WidgetWin_1", StringComparison.Ordinal);
+        var attempts = electron ? 3 : 2;
+        for (var i = 0; i < attempts; i++)
+        {
+            if (i > 0)
+            {
+                Thread.Sleep(electron ? 350 : 200);
+                if (!TryBringToForeground(hwnd))
+                {
+                    break;
+                }
+            }
+
+            SendWinArrow(arrangement);
+            Thread.Sleep(electron ? 400 : 250);
+            if (MatchesHalf(hwnd, target))
+            {
+                System.Diagnostics.Debug.WriteLine($"Snap OK '{saved.Title}' -> {arrangement} (attempt {i + 1})");
+                return new ApplyOutcome(true, SnapOutcome.Snapped, null);
+            }
+        }
+
+        var fail = $"snap failed for '{saved.Title}' ({arrangement})";
+        System.Diagnostics.Debug.WriteLine(fail);
+        return new ApplyOutcome(true, SnapOutcome.Failed, fail);
+    }
+
+    private static MonitorSnapshot? ResolveSnapMonitor(WindowSnapshot saved, IReadOnlyList<MonitorSnapshot> monitors)
+    {
+        if (monitors.Count == 0)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrEmpty(saved.MonitorDevice))
+        {
+            var byName = monitors.FirstOrDefault(m =>
+                m.DeviceName.Equals(saved.MonitorDevice, StringComparison.OrdinalIgnoreCase));
+            if (byName is not null)
+            {
+                return byName;
+            }
+        }
+
+        var hint = saved.NormalBounds;
+        var cx = (hint.Left + hint.Right) / 2;
+        var cy = (hint.Top + hint.Bottom) / 2;
+        var containing = monitors.FirstOrDefault(m =>
+            cx >= m.Bounds.Left && cx < m.Bounds.Right && cy >= m.Bounds.Top && cy < m.Bounds.Bottom);
+        return containing ?? monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+    }
+
+    private static bool MatchesHalf(nint hwnd, WindowRect target)
+    {
+        var visible = ReadVisibleBounds(hwnd);
+        return visible is { } rect && MonitorFill.NearlyEquals(rect, target, MonitorFill.DefaultTolerancePx);
+    }
+
+    private static WindowRect? ReadVisibleBounds(nint hwnd)
+    {
+        if (DwmGetWindowAttributeRect(hwnd, DwmwaExtendedFrameBounds, out var frame, sizeof(Rect)) == 0
+            && frame.Right > frame.Left
+            && frame.Bottom > frame.Top)
+        {
+            return new WindowRect(frame.Left, frame.Top, frame.Right, frame.Bottom);
+        }
+
+        return GetWindowRect(hwnd, out var screen)
+            ? new WindowRect(screen.Left, screen.Top, screen.Right, screen.Bottom)
+            : null;
+    }
+
+    private static void SeedOnMonitor(nint hwnd, WindowRect workArea, WindowArrangement arrangement)
+    {
+        var half = SnapArrangement.TargetHalf(workArea, arrangement);
+        // Floating seed centered in the target half (~60% of half width/height) so Win+Arrow engages snap.
+        var width = Math.Max(320, half.Width * 3 / 5);
+        var height = Math.Max(240, half.Height * 3 / 5);
+        var left = half.Left + (half.Width - width) / 2;
+        var top = half.Top + (half.Height - height) / 2;
+        ShowWindow(hwnd, (int)SwShowNormal);
+        const uint flags = SwpNoZOrder | SwpNoOwnerZOrder | SwpShowWindow;
+        SetWindowPos(hwnd, 0, left, top, width, height, flags);
+    }
+
+    private static bool TryBringToForeground(nint hwnd)
+    {
+        if (!IsWindow(hwnd))
+        {
+            return false;
+        }
+
+        var target = GetAncestor(hwnd, GaRoot);
+        if (target == 0)
+        {
+            target = hwnd;
+        }
+
+        ShowWindow(target, (int)SwShowNormal);
+        if (GetForegroundWindow() == target)
+        {
+            return true;
+        }
+
+        // ALT key trick: unlock foreground permission for this process.
+        SendAltPulse();
+
+        var fore = GetForegroundWindow();
+        var foreThread = fore == 0 ? 0u : GetWindowThreadProcessId(fore, out _);
+        var targetThread = GetWindowThreadProcessId(target, out _);
+        var current = GetCurrentThreadId();
+        var attachedFore = false;
+        var attachedTarget = false;
+        try
+        {
+            if (foreThread != 0 && foreThread != current)
+            {
+                attachedFore = AttachThreadInput(current, foreThread, true);
+            }
+
+            if (targetThread != 0 && targetThread != current && targetThread != foreThread)
+            {
+                attachedTarget = AttachThreadInput(current, targetThread, true);
+            }
+
+            BringWindowToTop(target);
+            return SetForegroundWindow(target) || GetForegroundWindow() == target;
+        }
+        finally
+        {
+            if (attachedTarget)
+            {
+                AttachThreadInput(current, targetThread, false);
+            }
+
+            if (attachedFore)
+            {
+                AttachThreadInput(current, foreThread, false);
+            }
+        }
+    }
+
+    private static void SendWinArrow(WindowArrangement arrangement)
+    {
+        var arrow = arrangement == WindowArrangement.LeftHalf ? VkLeft : VkRight;
+        Span<Input> inputs = stackalloc Input[4];
+        inputs[0] = Key(VkLwin, down: true);
+        inputs[1] = Key(arrow, down: true);
+        inputs[2] = Key(arrow, down: false);
+        inputs[3] = Key(VkLwin, down: false);
+        fixed (Input* ptr = inputs)
+        {
+            SendInput((uint)inputs.Length, ptr, sizeof(Input));
+        }
+    }
+
+    private static void SendAltPulse()
+    {
+        Span<Input> inputs = stackalloc Input[2];
+        inputs[0] = Key(VkMenu, down: true);
+        inputs[1] = Key(VkMenu, down: false);
+        fixed (Input* ptr = inputs)
+        {
+            SendInput((uint)inputs.Length, ptr, sizeof(Input));
+        }
+    }
+
+    private static Input Key(ushort vk, bool down) => new()
+    {
+        Type = InputKeyboard,
+        U = new InputUnion
+        {
+            Keyboard = new KeybdInput
+            {
+                Vk = vk,
+                Flags = down ? 0u : KeyeventfKeyup
+            }
+        }
+    };
+
+    private enum SnapOutcome
+    {
+        None,
+        Snapped,
+        Failed
+    }
+
+    private readonly record struct ApplyOutcome(bool Placed, SnapOutcome Snap, string? SnapDetail)
+    {
+        public static ApplyOutcome Missed => new(false, SnapOutcome.None, null);
+        public static ApplyOutcome PlacedOnly => new(true, SnapOutcome.None, null);
     }
 }

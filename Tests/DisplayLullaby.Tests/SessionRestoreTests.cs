@@ -359,6 +359,86 @@ public sealed class MonitorFillTests
         new("pic.jpg - ImageGlass", "WinUIDesktopWin32WindowClass", bounds, WindowShowState.Normal, fill?.DeviceName, fill);
 }
 
+
+public sealed class SnapArrangementTests
+{
+    // Same layout as MonitorFillTests: 4K primary work area 3840x2088, portrait secondary.
+    private static readonly MonitorSnapshot Primary =
+        new(0, @"\\.\DISPLAY1", new WindowRect(0, 0, 3840, 2160), new WindowRect(0, 0, 3840, 2088), 144, true);
+
+    private static readonly MonitorSnapshot Portrait =
+        new(1, @"\\.\DISPLAY2", new WindowRect(3840, -800, 6000, 3040), new WindowRect(3840, -800, 6000, 2956), 168, false);
+
+    private static readonly MonitorSnapshot[] Layout = [Primary, Portrait];
+
+    [Fact]
+    public void DetectsLeftHalfOfPrimaryWorkArea()
+    {
+        var left = SnapArrangement.LeftHalf(Primary.WorkArea);
+        Assert.Equal(WindowArrangement.LeftHalf, SnapArrangement.Detect(left, Layout));
+    }
+
+    [Fact]
+    public void DetectsRightHalfOfPrimaryWorkArea()
+    {
+        var right = SnapArrangement.RightHalf(Primary.WorkArea);
+        Assert.Equal(WindowArrangement.RightHalf, SnapArrangement.Detect(right, Layout));
+    }
+
+    [Fact]
+    public void DetectsLeftHalfOnSecondaryWithTolerance()
+    {
+        var exact = SnapArrangement.LeftHalf(Portrait.WorkArea);
+        var noisy = new WindowRect(exact.Left - 8, exact.Top + 4, exact.Right - 3, exact.Bottom - 5);
+        Assert.Equal(WindowArrangement.LeftHalf, SnapArrangement.Detect(noisy, Layout));
+    }
+
+    [Fact]
+    public void DetectsRightHalfOnSecondary()
+    {
+        Assert.Equal(WindowArrangement.RightHalf, SnapArrangement.Detect(SnapArrangement.RightHalf(Portrait.WorkArea), Layout));
+    }
+
+    [Theory]
+    [InlineData(100, 100, 1900, 1100)]
+    [InlineData(0, 0, 3840, 2088)]
+    [InlineData(10, 20, 810, 620)]
+    public void NonHalfWindowsAreNotArrangements(int l, int t, int r, int b) =>
+        Assert.Null(SnapArrangement.Detect(new WindowRect(l, t, r, b), Layout));
+
+    [Fact]
+    public void ArrangementRoundTripsThroughJson()
+    {
+        var app = TestData.App("claude", @"C:\claude.exe") with
+        {
+            Windows =
+            [
+                new WindowSnapshot(
+                    "Claude",
+                    "Chrome_WidgetWin_1",
+                    SnapArrangement.RightHalf(Primary.WorkArea),
+                    WindowShowState.Normal,
+                    Primary.DeviceName,
+                    FillsMonitor: null,
+                    Arrangement: WindowArrangement.RightHalf)
+            ]
+        };
+        var snapshot = TestData.Snapshot(app);
+        var json = SnapshotSerializer.Serialize(snapshot);
+        Assert.True(SnapshotSerializer.TryDeserialize(json, out var back));
+        Assert.Equal(WindowArrangement.RightHalf, back!.Apps[0].Windows[0].Arrangement);
+        Assert.Contains("rightHalf", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void OldSnapshotsWithoutArrangementStillLoad()
+    {
+        const string json = """{"version":1,"capturedAt":"2026-10-14T10:00:00Z","machineName":"x","reason":"r","apps":[{"processName":"a","isPackaged":false,"windows":[{"title":"t","className":"c","normalBounds":{"left":1,"top":2,"right":3,"bottom":4},"showState":"normal"}]}]}""";
+        Assert.True(SnapshotSerializer.TryDeserialize(json, out var back));
+        Assert.Null(back!.Apps[0].Windows[0].Arrangement);
+    }
+}
+
 public sealed class PackagedArgumentsTests
 {
     [Theory]

@@ -13,6 +13,7 @@ internal static unsafe partial class SessionNative
     public const long WsExNoActivate = 0x08000000;
     public const uint GwOwner = 4;
     public const int DwmwaCloaked = 14;
+    public const int DwmwaExtendedFrameBounds = 9;
     public const uint ProcessQueryLimitedInformation = 0x1000;
     public const int ProcessCommandLineInformation = 60;
     public const uint TokenQuery = 0x0008;
@@ -29,6 +30,14 @@ internal static unsafe partial class SessionNative
     public const uint SwpNoZOrder = 0x0004;
     public const uint SwpNoActivate = 0x0010;
     public const uint SwpNoOwnerZOrder = 0x0200;
+    public const uint SwpShowWindow = 0x0040;
+    public const uint InputKeyboard = 1;
+    public const ushort KeyeventfKeyup = 0x0002;
+    public const ushort VkMenu = 0x12;
+    public const ushort VkLwin = 0x5B;
+    public const ushort VkLeft = 0x25;
+    public const ushort VkRight = 0x27;
+    public const uint GaRoot = 2;
 
     public const uint ShgfiIcon = 0x100;
     public const uint ShgfiLargeIcon = 0x0;
@@ -185,6 +194,78 @@ internal static unsafe partial class SessionNative
     public static partial bool SetWindowPos(nint hwnd, nint insertAfter, int x, int y, int cx, int cy, uint flags);
 
     [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetForegroundWindow(nint hwnd);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint GetForegroundWindow();
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool BringWindowToTop(nint hwnd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ShowWindow(nint hwnd, int cmdShow);
+
+    [LibraryImport("kernel32.dll")]
+    public static partial uint GetCurrentThreadId();
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool AttachThreadInput(uint attachId, uint attachToId, [MarshalAs(UnmanagedType.Bool)] bool attach);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint GetAncestor(nint hwnd, uint flags);
+
+    [LibraryImport("user32.dll")]
+    public static partial uint SendInput(uint count, Input* inputs, int size);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MouseInput
+    {
+        public int Dx;
+        public int Dy;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public nuint ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KeybdInput
+    {
+        public ushort Vk;
+        public ushort Scan;
+        public uint Flags;
+        public uint Time;
+        public nuint ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct HardwareInput
+    {
+        public uint Msg;
+        public ushort ParamL;
+        public ushort ParamH;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    public struct InputUnion
+    {
+        [FieldOffset(0)] public MouseInput Mouse;
+        [FieldOffset(0)] public KeybdInput Keyboard;
+        [FieldOffset(0)] public HardwareInput Hardware;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Input
+    {
+        public uint Type;
+        public InputUnion U;
+    }
+
+    [LibraryImport("user32.dll")]
     public static partial nint MonitorFromWindow(nint hwnd, uint flags);
 
     [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
@@ -196,6 +277,9 @@ internal static unsafe partial class SessionNative
 
     [LibraryImport("dwmapi.dll")]
     public static partial int DwmGetWindowAttribute(nint hwnd, int attribute, out int value, int size);
+
+    [LibraryImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+    public static partial int DwmGetWindowAttributeRect(nint hwnd, int attribute, out Rect value, int size);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     public static partial nint OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint processId);

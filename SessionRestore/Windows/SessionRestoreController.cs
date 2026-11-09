@@ -149,7 +149,7 @@ internal sealed class SessionRestoreController : IDisposable
             try
             {
                 var result = new SessionRestorer(settings).Restore(snapshot, token);
-                var text = $"Launched {result.Launched}, placed {result.Placed} window(s), skipped {result.Skipped}.";
+                var text = $"Launched {result.Launched}, placed {result.Placed} window(s), snapped {result.Snapped}, snap-failed {result.SnapFailed}, skipped {result.Skipped}.";
                 if (result.Errors.Count > 0)
                 {
                     text += Environment.NewLine + string.Join(Environment.NewLine, result.Errors.Take(2));

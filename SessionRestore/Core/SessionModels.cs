@@ -10,6 +10,13 @@ internal enum WindowShowState
     Maximized
 }
 
+/// <summary>Windows Snap arrangement at capture time (left/right half of a monitor work area).</summary>
+internal enum WindowArrangement
+{
+    LeftHalf,
+    RightHalf
+}
+
 /// <summary>
 /// How a window filled its monitor at capture time (borderless / fullscreen-style apps that stay SW_SHOWNORMAL).
 /// </summary>
@@ -50,7 +57,8 @@ internal sealed record WindowSnapshot(
     WindowRect NormalBounds,
     WindowShowState ShowState,
     string? MonitorDevice,
-    FillMonitorRef? FillsMonitor = null);
+    FillMonitorRef? FillsMonitor = null,
+    WindowArrangement? Arrangement = null);
 
 internal sealed record AppSnapshot(
     string ProcessName,
