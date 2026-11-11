@@ -288,6 +288,14 @@ internal sealed class SessionRestoreController : IDisposable
         }
     }
 
+    private void ProtectPreSessionSnapshot(DateTimeOffset sessionStart, DateTimeOffset now)
+    {
+        var choice = SnapshotSelector.ChoosePreSessionSnapshot(Store.LoadAll(), sessionStart, now, MaxAutoRestoreAge);
+        Store.ProtectPath = choice.Path;
+        Store.OnProtectedFromPrune = message => _log.Write(message);
+        Store.Prune();
+    }
+
     private static string Format(DateTimeOffset value) => value.ToString("yyyy-MM-dd HH:mm:ss zzz");
 
     private static SessionRestoreSettings LoadSettings()
