@@ -61,6 +61,7 @@ internal sealed unsafe class TrayApplication
     {
         _config = AppConfig.LoadOrCreate();
         CreateHiddenWindow();
+        RegisterShutdownSnapshotPriority();
         AddTrayIcon("DisplayLullaby");
         RegisterConfiguredHotkeys(showWarnings: true);
         StartSessionRestore();
@@ -72,6 +73,7 @@ internal sealed unsafe class TrayApplication
             NativeMethods.DispatchMessage(ref message);
         }
 
+        ReleaseShutdownSnapshotPriority();
         UnregisterConfiguredHotkeys();
         StopTemporaryStandbyTimer();
         StopTemporaryStandbyWakeDelayTimer();
@@ -540,6 +542,26 @@ internal sealed unsafe class TrayApplication
         }
     }
 
+    /// <summary>
+    /// Ask Windows to notify this window early on shutdown so the end-session snapshot
+    /// is taken before other apps exit. Released as soon as WM_QUERYENDSESSION is handled.
+    /// </summary>
+    private void RegisterShutdownSnapshotPriority()
+    {
+        if (_hwnd != IntPtr.Zero)
+        {
+            SessionNative.ShutdownBlockReasonCreate(_hwnd, "DisplayLullaby is saving your session");
+        }
+    }
+
+    private void ReleaseShutdownSnapshotPriority()
+    {
+        if (_hwnd != IntPtr.Zero)
+        {
+            SessionNative.ShutdownBlockReasonDestroy(_hwnd);
+        }
+    }
+
     private void StartSessionRestore()
     {
         _sessionRestore = new SessionRestoreController(
@@ -904,11 +926,23 @@ internal sealed unsafe class TrayApplication
                 return 0;
 
             case SessionNative.WmQueryEndSession:
+                // Snapshot first, then drop the shutdown block so we do not hold up the restart.
                 _sessionRestore?.OnQueryEndSession();
+                ReleaseShutdownSnapshotPriority();
                 return 1;
 
             case SessionNative.WmEndSession:
                 _sessionRestore?.OnEndSession(wParam != 0);
+                if (wParam == 0)
+                {
+                    // Shutdown was cancelled; re-register so the next query still arrives early.
+                    RegisterShutdownSnapshotPriority();
+                }
+                else
+                {
+                    ReleaseShutdownSnapshotPriority();
+                }
+
                 return 0;
 
             case NativeMethods.WmTimer:
@@ -955,6 +989,7 @@ internal sealed unsafe class TrayApplication
                 return 0;
 
             case NativeMethods.WmDestroy:
+                ReleaseShutdownSnapshotPriority();
                 StopTemporaryStandbyTimer();
                 StopTemporaryStandbyWakeDelayTimer();
                 StopIdleDisplayOffTimer();

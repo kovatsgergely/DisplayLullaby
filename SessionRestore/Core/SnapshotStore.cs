@@ -67,6 +67,27 @@ internal sealed class SnapshotStore
         return null;
     }
 
+    /// <summary>Valid snapshots, newest first. Corrupt files are skipped.</summary>
+    public IReadOnlyList<LoadedSnapshot> LoadAll()
+    {
+        var result = new List<LoadedSnapshot>();
+        foreach (var path in ListSnapshotFiles())
+        {
+            try
+            {
+                if (SnapshotSerializer.TryDeserialize(File.ReadAllText(path), out var snapshot) && snapshot is not null)
+                {
+                    result.Add(new LoadedSnapshot(path, snapshot));
+                }
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        return result;
+    }
+
     public IReadOnlyList<string> ListSnapshotFiles()
     {
         if (!System.IO.Directory.Exists(Directory))

@@ -39,6 +39,15 @@ internal static unsafe partial class SessionNative
     public const ushort VkRight = 0x27;
     public const uint GaRoot = 2;
 
+    [LibraryImport("user32.dll", EntryPoint = "ShutdownBlockReasonCreate", StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ShutdownBlockReasonCreate(nint hwnd, string reason);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ShutdownBlockReasonDestroy(nint hwnd);
+
+
     public const uint ShgfiIcon = 0x100;
     public const uint ShgfiLargeIcon = 0x0;
     public const uint DiNormal = 0x3;

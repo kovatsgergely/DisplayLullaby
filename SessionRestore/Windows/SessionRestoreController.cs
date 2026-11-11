@@ -15,6 +15,7 @@ internal sealed class SessionRestoreController : IDisposable
     private readonly Action<string, string> _notify;
     private readonly Func<nuint, uint, bool> _startTimer;
     private readonly Action<nuint> _stopTimer;
+    private readonly SessionLog _log;
     private readonly object _gate = new();
     private CancellationTokenSource? _restoreCancellation;
     private bool _endingSession;
@@ -26,6 +27,7 @@ internal sealed class SessionRestoreController : IDisposable
         _stopTimer = stopTimer;
         Settings = LoadSettings();
         Store = new SnapshotStore(SnapshotDirectory, Settings.KeepSnapshots);
+        _log = new SessionLog(LogDirectory);
     }
 
     public SessionRestoreSettings Settings { get; private set; }
@@ -41,26 +43,40 @@ internal sealed class SessionRestoreController : IDisposable
 
     public static string SnapshotDirectory => Path.Combine(SettingsDirectory, "Sessions");
 
+    public static string LogDirectory => Path.Combine(SettingsDirectory, "Logs");
+
     public void Start()
     {
+        _log.Write("startup");
         if (Settings.Warnings.Count > 0)
         {
             _notify("Session restore config", string.Join(Environment.NewLine, Settings.Warnings.Take(3)));
+            _log.Write("config warnings: " + string.Join("; ", Settings.Warnings.Take(3)));
         }
 
         if (!Settings.Enabled)
         {
+            _log.Write("session restore disabled");
             return;
         }
 
-        var latest = Store.LoadLatest();
         var bootTime = DateTimeOffset.Now - TimeSpan.FromMilliseconds(Environment.TickCount64);
-        var sessionStart = RestoreTrigger.SessionStart(bootTime, SessionNative.TryGetLogonTime());
-        if (Settings.RestoreOnStartup && RestoreTrigger.ShouldAutoRestore(latest, sessionStart, DateTimeOffset.Now, MaxAutoRestoreAge))
+        var logonTime = SessionNative.TryGetLogonTime();
+        var sessionStart = RestoreTrigger.SessionStart(bootTime, logonTime);
+        _log.Write($"session start {Format(sessionStart)} (boot {Format(bootTime)}, logon {(logonTime is { } logon ? Format(logon) : "unknown")})");
+
+        var choice = SnapshotSelector.ChooseForAutoRestore(Store.LoadAll(), sessionStart, DateTimeOffset.Now, MaxAutoRestoreAge);
+        _log.Write(choice.Reason);
+        if (Settings.RestoreOnStartup && choice.Snapshot is not null)
         {
             // Do not snapshot until restore is done: an early snapshot of a half-empty desktop would become "latest".
             _startTimer(StartupRestoreTimerId, (uint)Math.Max(1, Settings.StartupDelaySeconds) * 1000);
             return;
+        }
+
+        if (!Settings.RestoreOnStartup)
+        {
+            _log.Write("RestoreOnStartup is false");
         }
 
         StartSnapshotTimer();
@@ -120,7 +136,12 @@ internal sealed class SessionRestoreController : IDisposable
 
     public void RestoreLatest(bool automatic)
     {
-        var snapshot = Store.LoadLatest();
+        var now = DateTimeOffset.Now;
+        var choice = automatic
+            ? ChooseAutoRestore(now)
+            : SnapshotSelector.ChooseForRestoreNow(Store.LoadAll());
+        _log.Write(choice.Reason);
+        var snapshot = choice.Snapshot;
         if (snapshot is null)
         {
             if (!automatic)
@@ -144,6 +165,7 @@ internal sealed class SessionRestoreController : IDisposable
 
         var token = _restoreCancellation.Token;
         var settings = Settings;
+        var chosen = choice.Path is { } path ? Path.GetFileName(path) : snapshot.Reason;
         _ = Task.Run(() =>
         {
             try
@@ -155,13 +177,21 @@ internal sealed class SessionRestoreController : IDisposable
                     text += Environment.NewLine + string.Join(Environment.NewLine, result.Errors.Take(2));
                 }
 
+                _log.Write($"restore {chosen}: launched={result.Launched} placed={result.Placed} snapped={result.Snapped} snap-failed={result.SnapFailed} skipped={result.Skipped}");
+                if (result.Errors.Count > 0)
+                {
+                    _log.Write("restore errors: " + string.Join("; ", result.Errors.Take(5)));
+                }
+
                 _notify("Session restored", text);
             }
             catch (OperationCanceledException)
             {
+                _log.Write($"restore {chosen}: cancelled");
             }
             catch (Exception ex)
             {
+                _log.Write($"restore failed: {ex.Message}");
                 _notify("Session restore failed", ex.Message);
             }
             finally
@@ -177,8 +207,15 @@ internal sealed class SessionRestoreController : IDisposable
         StartSnapshotTimer();
     }
 
-    /// <summary>Latest snapshot for the settings window (may be null).</summary>
-    public SessionSnapshot? LoadLatestSnapshot() => Store.LoadLatest();
+    private SnapshotChoice ChooseAutoRestore(DateTimeOffset now)
+    {
+        var bootTime = now - TimeSpan.FromMilliseconds(Environment.TickCount64);
+        var sessionStart = RestoreTrigger.SessionStart(bootTime, SessionNative.TryGetLogonTime());
+        return SnapshotSelector.ChooseForAutoRestore(Store.LoadAll(), sessionStart, now, MaxAutoRestoreAge);
+    }
+
+    /// <summary>Snapshot the settings window should describe (same choice as Restore now).</summary>
+    public SessionSnapshot? LoadLatestSnapshot() => SnapshotSelector.ChooseForRestoreNow(Store.LoadAll()).Snapshot;
 
     /// <summary>Writes session-restore.ini atomically in the commented default layout. Call <see cref="Reload"/> after.</summary>
     public static void WriteSettings(SessionRestoreSettings settings) =>
@@ -212,25 +249,41 @@ internal sealed class SessionRestoreController : IDisposable
         try
         {
             var snapshot = WindowCapture.Capture(reason, new IgnoreMatcher(Settings.Ignore));
+            var windows = SnapshotSelector.WindowCount(snapshot);
             if (snapshot.Apps.Count == 0 && reason != "manual")
             {
+                _log.Write($"skipped empty {reason} snapshot");
                 return; // never let an empty desktop (e.g. during logoff) replace a useful snapshot
             }
 
-            Store.Save(snapshot);
+            if (SnapshotSelector.IsEndSession(reason))
+            {
+                var decision = SnapshotSelector.EvaluateEndSession(snapshot, Store.LoadAll().Select(static item => item.Snapshot));
+                if (decision.Snapshot is null)
+                {
+                    _log.Write(decision.Reason);
+                    return;
+                }
+            }
+
+            var path = Store.Save(snapshot);
+            _log.Write($"saved {reason} {Path.GetFileName(path)} ({snapshot.Apps.Count} apps, {windows} windows)");
             if (notify)
             {
-                _notify("Session snapshot saved", $"{snapshot.Apps.Count} app(s), {snapshot.Apps.Sum(static a => a.Windows.Count)} window(s).");
+                _notify("Session snapshot saved", $"{snapshot.Apps.Count} app(s), {windows} window(s).");
             }
         }
         catch (Exception ex)
         {
+            _log.Write($"snapshot {reason} failed: {ex.Message}");
             if (notify)
             {
                 _notify("Session snapshot failed", ex.Message);
             }
         }
     }
+
+    private static string Format(DateTimeOffset value) => value.ToString("yyyy-MM-dd HH:mm:ss zzz");
 
     private static SessionRestoreSettings LoadSettings()
     {

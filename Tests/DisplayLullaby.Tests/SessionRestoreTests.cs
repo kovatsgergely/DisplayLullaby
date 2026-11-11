@@ -730,6 +730,196 @@ public sealed class PackageLogoTests
         Assert.Null(PackageLogo.Find(@"C:\Windows\notepad.exe", _ => false, _ => null, (_, _) => []));
 }
 
+
+public sealed class SnapshotSelectorTests
+{
+    private static readonly DateTimeOffset T0 = new(2026, 11, 11, 3, 34, 53, TimeSpan.FromHours(1));
+    private static readonly TimeSpan MaxAge = TimeSpan.FromDays(7);
+
+    [Fact]
+    public void DiscardsEndSessionWithFewerThanHalfTheRecentPeriodicApps()
+    {
+        var periodic = Snap(T0, "periodic", Apps(16));
+        var end = Snap(T0.AddSeconds(55), "end-session", Apps(2));
+
+        Assert.True(SnapshotSelector.IsThinEndSession(end, [periodic, end]));
+        Assert.Null(SnapshotSelector.EvaluateEndSession(end, [periodic]).Snapshot);
+        Assert.Contains("discarded thin end-session", SnapshotSelector.EvaluateEndSession(end, [periodic]).Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DiscardsEndSessionWhenWindowsDropBelowHalfEvenIfAppCountHolds()
+    {
+        var periodic = Snap(T0, "periodic", AppWithWindows("chrome", 8));
+        var end = Snap(T0.AddMinutes(1), "end-session", AppWithWindows("chrome", 3));
+
+        Assert.True(SnapshotSelector.IsThinEndSession(end, [periodic]));
+    }
+
+    [Fact]
+    public void KeepsEndSessionAtExactlyHalf()
+    {
+        var periodic = Snap(T0, "periodic", Apps(10));
+        var end = Snap(T0.AddMinutes(1), "end-session", Apps(5));
+
+        Assert.False(SnapshotSelector.IsThinEndSession(end, [periodic]));
+        Assert.NotNull(SnapshotSelector.EvaluateEndSession(end, [periodic]).Snapshot);
+    }
+
+    [Fact]
+    public void KeepsEndSessionWhenPeriodicIsOlderThanTenMinutes()
+    {
+        var periodic = Snap(T0, "periodic", Apps(16));
+        var end = Snap(T0.AddMinutes(11), "end-session", Apps(2));
+
+        Assert.False(SnapshotSelector.IsThinEndSession(end, [periodic]));
+    }
+
+    [Fact]
+    public void KeepsEndSessionWhenNoRecentPeriodicExists()
+    {
+        var end = Snap(T0, "end-session", Apps(2));
+        Assert.False(SnapshotSelector.IsThinEndSession(end, [end]));
+        Assert.NotNull(SnapshotSelector.EvaluateEndSession(end, []).Snapshot);
+    }
+
+    [Fact]
+    public void PeriodicSnapshotsAreNeverTreatedAsThinEndSession()
+    {
+        var rich = Snap(T0, "periodic", Apps(16));
+        var later = Snap(T0.AddMinutes(3), "periodic", Apps(2));
+        Assert.False(SnapshotSelector.IsThinEndSession(later, [rich, later]));
+    }
+
+    [Fact]
+    public void AutoRestoreSkipsThinEndSessionAndPicksRecentPeriodic()
+    {
+        var periodic = Loaded("session-20261111-023453-437.json", Snap(T0, "periodic", Apps(16)));
+        var end = Loaded("session-20261111-023548-474.json", Snap(T0.AddSeconds(55), "end-session", Apps(2)));
+        var sessionStart = new DateTimeOffset(2026, 11, 11, 9, 49, 1, TimeSpan.FromHours(1));
+        var now = new DateTimeOffset(2026, 11, 11, 9, 50, 11, TimeSpan.FromHours(1));
+
+        var choice = SnapshotSelector.ChooseForAutoRestore([end, periodic], sessionStart, now, MaxAge);
+
+        Assert.Equal(periodic.Path, choice.Path);
+        Assert.Equal(16, choice.Snapshot!.Apps.Count);
+        Assert.Contains("skipped thin end-session", choice.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AutoRestoreDoesNotRunOnceThisSessionAlreadyHasASnapshot()
+    {
+        var overnight = Loaded("session-20261111-023453-437.json", Snap(T0, "periodic", Apps(16)));
+        var morning = Loaded(
+            "session-20261111-085931-513.json",
+            Snap(new DateTimeOffset(2026, 11, 11, 9, 59, 31, TimeSpan.FromHours(1)), "periodic", Apps(7)));
+        var sessionStart = new DateTimeOffset(2026, 11, 11, 9, 49, 1, TimeSpan.FromHours(1));
+        var now = new DateTimeOffset(2026, 11, 11, 10, 50, 0, TimeSpan.FromHours(1));
+
+        var choice = SnapshotSelector.ChooseForAutoRestore([morning, overnight], sessionStart, now, MaxAge);
+
+        Assert.Null(choice.Snapshot);
+        Assert.Contains("already exists from this session", choice.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AutoRestoreSkipsStaleSnapshots()
+    {
+        var stale = Loaded("old.json", Snap(T0.AddDays(-30), "periodic", Apps(16)));
+        var sessionStart = T0.AddDays(30);
+        var choice = SnapshotSelector.ChooseForAutoRestore([stale], sessionStart, sessionStart.AddMinutes(2), MaxAge);
+        Assert.Null(choice.Snapshot);
+        Assert.Contains("no eligible snapshot", choice.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RestoreNowPicksNewestGoodSnapshot()
+    {
+        var overnight = Loaded("session-20261111-023453-437.json", Snap(T0, "periodic", Apps(16)));
+        var morning = Loaded(
+            "session-20261111-085931-513.json",
+            Snap(new DateTimeOffset(2026, 11, 11, 9, 59, 31, TimeSpan.FromHours(1)), "periodic", Apps(7)));
+
+        var choice = SnapshotSelector.ChooseForRestoreNow([morning, overnight]);
+        Assert.Equal(morning.Path, choice.Path);
+    }
+
+    [Fact]
+    public void RestoreNowSkipsThinEndSessionInFavorOfPreviousPeriodic()
+    {
+        var periodic = Loaded("p.json", Snap(T0, "periodic", Apps(16)));
+        var end = Loaded("e.json", Snap(T0.AddSeconds(55), "end-session", Apps(2)));
+
+        var choice = SnapshotSelector.ChooseForRestoreNow([end, periodic]);
+        Assert.Equal(periodic.Path, choice.Path);
+    }
+
+    [Fact]
+    public void FallsBackToThinEndSessionWhenItIsTheOnlySnapshot()
+    {
+        var end = Loaded("e.json", Snap(T0, "end-session", Apps(2)));
+        var choice = SnapshotSelector.ChooseForRestoreNow([end]);
+        Assert.Equal(end.Path, choice.Path);
+        Assert.Equal(2, choice.Snapshot!.Apps.Count);
+        Assert.DoesNotContain("no eligible snapshot", choice.Reason, StringComparison.Ordinal);
+    }
+
+    private static LoadedSnapshot Loaded(string path, SessionSnapshot snapshot) => new(path, snapshot);
+
+    private static SessionSnapshot Snap(DateTimeOffset at, string reason, params AppSnapshot[] apps) =>
+        TestData.Snapshot(at, apps) with { Reason = reason };
+
+    private static AppSnapshot[] Apps(int count) =>
+        Enumerable.Range(0, count).Select(i => TestData.App($"app{i}", $"app{i}.exe")).ToArray();
+
+    private static AppSnapshot AppWithWindows(string name, int windows) =>
+        TestData.App(name, name + ".exe") with
+        {
+            Windows = Enumerable.Range(0, windows)
+                .Select(i => new WindowSnapshot(
+                    $"{name} {i}",
+                    "Class",
+                    new WindowRect(0, 0, 100, 100),
+                    WindowShowState.Normal,
+                    @"\\.\DISPLAY1"))
+                .ToList()
+        };
+}
+
+public sealed class SessionLogTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dl-log-tests-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_dir))
+        {
+            Directory.Delete(_dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WritesTimestampedLineAndStripsNewlines()
+    {
+        var log = new SessionLog(_dir);
+        var path = log.Write("hello\r\nworld");
+        var text = File.ReadAllText(path);
+        Assert.Contains("hello world", text, StringComparison.Ordinal);
+        Assert.DoesNotContain('\n', text.TrimEnd());
+        Assert.StartsWith("session-", Path.GetFileName(path), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PrunesLogsOlderThanKeepDays()
+    {
+        Directory.CreateDirectory(_dir);
+        var stale = Path.Combine(_dir, "session-20200101.log");
+        File.WriteAllText(stale, "old");
+        new SessionLog(_dir).Write("fresh");
+        Assert.False(File.Exists(stale));
+    }
+}
+
 internal static class TestData
 {
     public static AppSnapshot App(string name, string? exe, string? commandLine = null) =>
