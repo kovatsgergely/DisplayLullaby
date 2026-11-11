@@ -69,6 +69,133 @@ public sealed class SnapshotStoreTests : IDisposable
         Assert.Null(new SnapshotStore(_dir).LoadLatest());
 }
 
+
+public sealed class SnapshotRetentionTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dl-retain-" + Guid.NewGuid().ToString("N"));
+    private static readonly TimeSpan MaxAge = TimeSpan.FromDays(7);
+    private static readonly DateTimeOffset SessionStart = new(2026, 11, 11, 9, 49, 1, TimeSpan.FromHours(1));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_dir))
+        {
+            Directory.Delete(_dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PlanKeepsNewestPlusOneProtectedExtra()
+    {
+        var files = new[] { "s5.json", "s4.json", "s3.json", "s2.json", "s1.json", "s0.json" };
+        var plan = SnapshotRetention.Plan(files, keepCount: 5, protectPath: "s0.json");
+        Assert.Empty(plan.Delete);
+        Assert.Equal("s0.json", plan.ProtectedExtraPath);
+    }
+
+    [Fact]
+    public void PlanNeverKeepsMoreThanOneExtraFile()
+    {
+        var files = new[] { "n4.json", "n3.json", "n2.json", "n1.json", "n0.json", "oldB.json", "oldA.json" };
+        var plan = SnapshotRetention.Plan(files, 5, "oldB.json");
+        Assert.Equal(new[] { "oldA.json" }, plan.Delete);
+        Assert.Equal("oldB.json", plan.ProtectedExtraPath);
+    }
+
+    [Fact]
+    public void PlanDoesNotCountProtectedAsExtraWhenItIsAlreadyAmongTheNewest()
+    {
+        var plan = SnapshotRetention.Plan(["a.json", "b.json", "c.json"], 3, "a.json");
+        Assert.Empty(plan.Delete);
+        Assert.Null(plan.ProtectedExtraPath);
+    }
+
+    [Fact]
+    public void StoreKeepsPreSessionSnapshotInAdditionToNewestAndLogsOnce()
+    {
+        var store = new SnapshotStore(_dir, keepCount: 5);
+        var logs = new List<string>();
+        var prePath = store.Save(Snap(SessionStart.AddHours(-6), "periodic", 16));
+        store.ProtectPath = prePath;
+        store.OnProtectedFromPrune = logs.Add;
+
+        for (var i = 0; i < 6; i++)
+        {
+            store.Save(Snap(SessionStart.AddMinutes(i + 1), "periodic", 3));
+        }
+
+        Assert.Equal(6, store.ListSnapshotFiles().Count);
+        Assert.Contains(prePath, store.ListSnapshotFiles());
+        Assert.Single(logs);
+        Assert.Contains("protected from prune:", logs[0], StringComparison.Ordinal);
+        Assert.Contains(Path.GetFileName(prePath), logs[0], StringComparison.Ordinal);
+
+        store.Save(Snap(SessionStart.AddMinutes(20), "periodic", 3));
+        Assert.Equal(6, store.ListSnapshotFiles().Count);
+        Assert.Contains(prePath, store.ListSnapshotFiles());
+        Assert.Single(logs);
+    }
+
+    [Fact]
+    public void StoreProtectsPeriodicNotThinEndSession()
+    {
+        var store = new SnapshotStore(_dir, keepCount: 3);
+        var periodic = store.Save(Snap(SessionStart.AddMinutes(-2), "periodic", 16));
+        var thin = store.Save(Snap(SessionStart.AddMinutes(-1), "end-session", 2));
+        var choice = SnapshotSelector.ChoosePreSessionSnapshot(store.LoadAll(), SessionStart, SessionStart.AddHours(2), MaxAge);
+        Assert.Equal(periodic, choice.Path);
+
+        store.ProtectPath = choice.Path;
+        for (var i = 0; i < 4; i++)
+        {
+            store.Save(Snap(SessionStart.AddMinutes(3 + i), "periodic", 2));
+        }
+
+        var files = store.ListSnapshotFiles();
+        Assert.Contains(periodic, files);
+        Assert.DoesNotContain(thin, files);
+        Assert.True(files.Count <= 4);
+    }
+
+    [Fact]
+    public void StoreDropsOldProtectedFileWhenANewerPreSessionExists()
+    {
+        var store = new SnapshotStore(_dir, keepCount: 3);
+        var oldPre = store.Save(Snap(SessionStart.AddHours(-6), "periodic", 16));
+        store.ProtectPath = oldPre;
+        for (var i = 0; i < 4; i++)
+        {
+            store.Save(Snap(SessionStart.AddMinutes(i + 1), "periodic", 3));
+        }
+
+        Assert.Contains(oldPre, store.ListSnapshotFiles());
+
+        var nextSession = SessionStart.AddDays(1);
+        var choice = SnapshotSelector.ChoosePreSessionSnapshot(store.LoadAll(), nextSession, nextSession.AddMinutes(2), MaxAge);
+        Assert.NotNull(choice.Path);
+        Assert.NotEqual(oldPre, choice.Path);
+
+        store.ProtectPath = choice.Path;
+        store.Prune();
+        Assert.DoesNotContain(oldPre, store.ListSnapshotFiles());
+        Assert.Contains(choice.Path!, store.ListSnapshotFiles());
+    }
+
+    [Fact]
+    public void StalePreSessionIsNotSelectedForProtection()
+    {
+        var stale = new LoadedSnapshot("old.json", Snap(SessionStart.AddDays(-30), "periodic", 16));
+        var choice = SnapshotSelector.ChoosePreSessionSnapshot([stale], SessionStart, SessionStart.AddMinutes(2), MaxAge);
+        Assert.Null(choice.Snapshot);
+    }
+
+    private static SessionSnapshot Snap(DateTimeOffset at, string reason, int apps) =>
+        TestData.Snapshot(at, Enumerable.Range(0, apps).Select(i => TestData.App($"app{i}", $"app{i}.exe")).ToArray()) with
+        {
+            Reason = reason
+        };
+}
+
 public sealed class IgnoreMatcherTests
 {
     [Theory]
@@ -804,6 +931,22 @@ public sealed class SnapshotSelectorTests
         Assert.Equal(periodic.Path, choice.Path);
         Assert.Equal(16, choice.Snapshot!.Apps.Count);
         Assert.Contains("skipped thin end-session", choice.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PreSessionChoiceStillPicksOvernightWhenThisSessionAlreadyHasASnapshot()
+    {
+        var overnight = Loaded("session-20261111-023453-437.json", Snap(T0, "periodic", Apps(16)));
+        var morning = Loaded(
+            "session-20261111-085931-513.json",
+            Snap(new DateTimeOffset(2026, 11, 11, 9, 59, 31, TimeSpan.FromHours(1)), "periodic", Apps(7)));
+        var sessionStart = new DateTimeOffset(2026, 11, 11, 9, 49, 1, TimeSpan.FromHours(1));
+        var now = new DateTimeOffset(2026, 11, 11, 10, 50, 0, TimeSpan.FromHours(1));
+
+        var choice = SnapshotSelector.ChoosePreSessionSnapshot([morning, overnight], sessionStart, now, MaxAge);
+
+        Assert.Equal(overnight.Path, choice.Path);
+        Assert.Equal(16, choice.Snapshot!.Apps.Count);
     }
 
     [Fact]

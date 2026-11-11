@@ -2,12 +2,15 @@ namespace DisplayLullaby.SessionRestore;
 
 /// <summary>
 /// Stores snapshots as session-yyyyMMdd-HHmmss.json in a folder. Writes are atomic
-/// (temp file + File.Move/Replace) and only the newest <see cref="KeepCount"/> files are kept.
+/// (temp file + File.Move/Replace). The newest <see cref="KeepCount"/> files are kept,
+/// plus at most one extra file protected as the pre-session restore snapshot.
 /// </summary>
 internal sealed class SnapshotStore
 {
     private const string Prefix = "session-";
     private const string Extension = ".json";
+
+    private string? _loggedProtectPath;
 
     public SnapshotStore(string directory, int keepCount = 5)
     {
@@ -18,6 +21,12 @@ internal sealed class SnapshotStore
     public string Directory { get; }
 
     public int KeepCount { get; }
+
+    /// <summary>Optional snapshot file the auto-restore selector would pick for the current session. Prune will not delete it.</summary>
+    public string? ProtectPath { get; set; }
+
+    /// <summary>Invoked once when prune first spares <see cref="ProtectPath"/> because it is outside the newest N files.</summary>
+    public Action<string>? OnProtectedFromPrune { get; set; }
 
     public string Save(SessionSnapshot snapshot)
     {
@@ -100,16 +109,28 @@ internal sealed class SnapshotStore
             .ToArray();
     }
 
-    private void Prune()
+    public void Prune()
     {
-        foreach (var stale in ListSnapshotFiles().Skip(KeepCount))
+        var files = ListSnapshotFiles();
+        var plan = SnapshotRetention.Plan(files, KeepCount, ProtectPath);
+        if (plan.ProtectedExtraPath is { } extra
+            && !string.Equals(_loggedProtectPath, extra, StringComparison.OrdinalIgnoreCase))
+        {
+            OnProtectedFromPrune?.Invoke($"protected from prune: {Path.GetFileName(extra)}");
+            _loggedProtectPath = extra;
+        }
+
+        foreach (var stale in plan.Delete)
         {
             TryDelete(stale);
         }
 
-        foreach (var orphan in System.IO.Directory.GetFiles(Directory, "*.tmp"))
+        if (System.IO.Directory.Exists(Directory))
         {
-            TryDelete(orphan);
+            foreach (var orphan in System.IO.Directory.GetFiles(Directory, "*.tmp"))
+            {
+                TryDelete(orphan);
+            }
         }
     }
 

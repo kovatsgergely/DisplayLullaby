@@ -83,12 +83,26 @@ internal static class SnapshotSelector
             return new SnapshotChoice(null, null, "auto-restore: skipped because a snapshot already exists from this session");
         }
 
+        return ChoosePreSessionSnapshot(snapshotsNewestFirst, sessionStart, now, maxAge);
+    }
+
+    /// <summary>
+    /// Newest good snapshot captured before <paramref name="sessionStart"/> (skips thin end-session captures).
+    /// Unlike auto-restore, this still returns that snapshot after the current session has already been snapshotted,
+    /// so pruning can keep it.
+    /// </summary>
+    public static SnapshotChoice ChoosePreSessionSnapshot(
+        IReadOnlyList<LoadedSnapshot> snapshotsNewestFirst,
+        DateTimeOffset sessionStart,
+        DateTimeOffset now,
+        TimeSpan maxAge)
+    {
         var eligible = snapshotsNewestFirst
             .Where(item => item.Snapshot.Apps.Count > 0
                            && item.Snapshot.CapturedAt < sessionStart
                            && now - item.Snapshot.CapturedAt <= maxAge)
             .ToList();
-        return ChooseFirstNonThin(eligible, snapshotsNewestFirst, "auto-restore");
+        return ChooseFirstNonThin(eligible, snapshotsNewestFirst, "pre-session");
     }
 
     public static SnapshotChoice ChooseForRestoreNow(IReadOnlyList<LoadedSnapshot> snapshotsNewestFirst)

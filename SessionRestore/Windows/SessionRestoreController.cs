@@ -62,10 +62,12 @@ internal sealed class SessionRestoreController : IDisposable
 
         var bootTime = DateTimeOffset.Now - TimeSpan.FromMilliseconds(Environment.TickCount64);
         var logonTime = SessionNative.TryGetLogonTime();
+        var now = DateTimeOffset.Now;
         var sessionStart = RestoreTrigger.SessionStart(bootTime, logonTime);
         _log.Write($"session start {Format(sessionStart)} (boot {Format(bootTime)}, logon {(logonTime is { } logon ? Format(logon) : "unknown")})");
+        ProtectPreSessionSnapshot(sessionStart, now);
 
-        var choice = SnapshotSelector.ChooseForAutoRestore(Store.LoadAll(), sessionStart, DateTimeOffset.Now, MaxAutoRestoreAge);
+        var choice = SnapshotSelector.ChooseForAutoRestore(Store.LoadAll(), sessionStart, now, MaxAutoRestoreAge);
         _log.Write(choice.Reason);
         if (Settings.RestoreOnStartup && choice.Snapshot is not null)
         {
@@ -86,6 +88,9 @@ internal sealed class SessionRestoreController : IDisposable
     {
         Settings = LoadSettings();
         Store = new SnapshotStore(SnapshotDirectory, Settings.KeepSnapshots);
+        var now = DateTimeOffset.Now;
+        var bootTime = now - TimeSpan.FromMilliseconds(Environment.TickCount64);
+        ProtectPreSessionSnapshot(RestoreTrigger.SessionStart(bootTime, SessionNative.TryGetLogonTime()), now);
         _stopTimer(SnapshotTimerId);
         if (Settings.Enabled && !IsRestoring)
         {
